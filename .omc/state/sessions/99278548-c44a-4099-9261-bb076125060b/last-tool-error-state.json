@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"vercel --version 2>&1 && vercel whoami 2>&1\",\"description\":\"Check Vercel CLI version and auth status\"}",
-  "error": "Exit code 127\n(eval):1: command not found: vercel",
-  "timestamp": "2026-06-29T04:19:07.793Z",
-  "retry_count": 1
-}
