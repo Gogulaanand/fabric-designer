@@ -1,19 +1,46 @@
-import { useCallback } from 'react';
 
 const TOOLS = [
-  { id: 'addDiv', label: '+ Band Line', icon: '➕', color: '#c0392b', hint: 'Click image to add a horizontal divider' },
-  { id: 'paint',  label: 'Paint Band', icon: '🎨', color: '#2471a3', hint: 'Click a band to fill white pixels with active color' },
-  { id: 'dragDiv',label: 'Drag Line',  icon: '↕',  color: '#7d6608', hint: 'Drag a red line to reposition it' },
-  { id: 'rmDiv',  label: 'Remove Line',icon: '✂️', color: '#6c3483', hint: 'Click near a red line to remove it' },
+  { id: 'addDiv', label: 'Add Line',   icon: '╋', color: '#2563eb', hint: 'Click image to add a divider line' },
+  { id: 'paint',  label: 'Paint',      icon: '🎨', color: '#7c3aed', hint: 'Click a band to fill white pixels with active color' },
+  { id: 'dragDiv',label: 'Drag Line',  icon: '⇔',  color: '#d97706', hint: 'Drag a divider line to reposition it' },
+  { id: 'rmDiv',  label: 'Remove Line',icon: '✂',  color: '#dc2626', hint: 'Click near a divider line to remove it' },
 ];
 
-export function Toolbar({ tool, setTool, hasImage, onReset, onAutoDetect, onToggleOriginal, showOriginal, onSaveProject, onLoadProject }) {
+export function Toolbar({
+  tool, setTool, hasImage,
+  onReset, onAutoDetect, onToggleOriginal, showOriginal,
+  onSaveProject, onLoadProject,
+  dividerAxis, onSetDividerAxis,
+}) {
   const hint = TOOLS.find(t => t.id === tool)?.hint ?? '';
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Tool buttons */}
-      <div className="flex gap-2 flex-wrap items-center justify-center">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {/* Direction toggle */}
+        <div className="flex items-center rounded-lg border border-slate-200 overflow-hidden mr-1">
+          <AxisBtn
+            active={dividerAxis === 'horizontal'}
+            disabled={!hasImage}
+            onClick={() => onSetDividerAxis('horizontal')}
+            title="Horizontal bands (rows)"
+          >
+            ═ Horizontal
+          </AxisBtn>
+          <div className="w-px h-6 bg-slate-200" />
+          <AxisBtn
+            active={dividerAxis === 'vertical'}
+            disabled={!hasImage}
+            onClick={() => onSetDividerAxis('vertical')}
+            title="Vertical bands (columns)"
+          >
+            ║ Vertical
+          </AxisBtn>
+        </div>
+
+        <div className="w-px h-6 bg-slate-200 mx-0.5" />
+
+        {/* Tool buttons */}
         {TOOLS.map(t => (
           <ToolBtn
             key={t.id}
@@ -27,39 +54,39 @@ export function Toolbar({ tool, setTool, hasImage, onReset, onAutoDetect, onTogg
           </ToolBtn>
         ))}
 
-        <div className="w-px h-6 bg-[#333] mx-1" />
+        <div className="w-px h-6 bg-slate-200 mx-0.5" />
 
-        <ToolBtn disabled={!hasImage} color="#1e5e38" onClick={onToggleOriginal} active={showOriginal}>
+        <ToolBtn disabled={!hasImage} color={showOriginal ? '#0ea5e9' : '#64748b'} onClick={onToggleOriginal} active={showOriginal}>
           <span>👁</span>
           <span>{showOriginal ? 'Colorized' : 'Original'}</span>
         </ToolBtn>
 
-        <ToolBtn disabled={!hasImage} color="#444" onClick={onAutoDetect}>
+        <ToolBtn disabled={!hasImage} color="#64748b" onClick={onAutoDetect}>
           <span>✨</span>
           <span>Auto Detect</span>
         </ToolBtn>
 
-        <ToolBtn disabled={!hasImage} color="#333" onClick={onReset}>
-          <span>🔄</span>
+        <ToolBtn disabled={!hasImage} color="#64748b" onClick={onReset}>
+          <span>↺</span>
           <span>Reset</span>
         </ToolBtn>
 
-        <div className="w-px h-6 bg-[#333] mx-1" />
+        <div className="w-px h-6 bg-slate-200 mx-0.5" />
 
-        <ToolBtn disabled={!hasImage} color="#2c3e50" onClick={onSaveProject}>
+        <ToolBtn disabled={!hasImage} color="#64748b" onClick={onSaveProject}>
           <span>💾</span>
           <span>Save</span>
         </ToolBtn>
 
-        <ToolBtn color="#2c3e50" onClick={onLoadProject}>
+        <ToolBtn color="#64748b" onClick={onLoadProject}>
           <span>📂</span>
           <span>Load</span>
         </ToolBtn>
       </div>
 
       {/* Hint */}
-      {hasImage && (
-        <p className="text-center text-xs text-[#555] min-h-4">{hint}</p>
+      {hasImage && hint && (
+        <p className="text-xs text-slate-400 min-h-4 pl-1">{hint}</p>
       )}
     </div>
   );
@@ -71,12 +98,32 @@ function ToolBtn({ children, active, disabled, color, onClick }) {
       onClick={onClick}
       disabled={disabled}
       style={{
-        background: active ? color : '#1a1a1a',
+        background: active ? color : 'transparent',
+        color: disabled ? '#cbd5e1' : active ? '#fff' : '#475569',
         outline: active ? `2px solid ${color}` : '2px solid transparent',
-        color: disabled ? '#444' : active ? '#fff' : '#999',
+        outlineOffset: '1px',
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-none text-sm font-semibold transition-all duration-150 disabled:opacity-40"
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-100 hover:bg-slate-100 disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}
+
+function AxisBtn({ children, active, disabled, onClick, title }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        background: active ? '#eff6ff' : 'transparent',
+        color: active ? '#1d4ed8' : '#64748b',
+        fontWeight: active ? 600 : 400,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
+      className="px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
     >
       {children}
     </button>

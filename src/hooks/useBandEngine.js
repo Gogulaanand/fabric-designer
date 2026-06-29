@@ -44,39 +44,42 @@ export function useBandEngine() {
   const toggleOriginal = useCallback(() => dispatch({ type: 'TOGGLE_ORIGINAL' }), []);
   const reset = useCallback(() => dispatch({ type: 'RESET' }), []);
 
+  const setDividerAxis = useCallback((axis) => dispatch({ type: 'SET_DIVIDER_AXIS', axis }), []);
+
   const autoDetect = useCallback(() => {
     const imgData = displayImageDataRef.current;
     if (!imgData || !state.displayDims) return;
-    const dividers = autoDetectDividers(imgData, state.displayDims);
+    const dividers = autoDetectDividers(imgData, state.displayDims, 8, state.dividerAxis);
     dispatch({ type: 'SET_DIVIDERS_FROM_AUTO', dividers });
-  }, [state.displayDims]);
+  }, [state.displayDims, state.dividerAxis]);
 
-  const paintBandByY = useCallback((y) => {
+  // Works for both horizontal (coord = y) and vertical (coord = x) — CanvasView passes the right axis coordinate
+  const paintBandByY = useCallback((coord) => {
     const { dividers, bands, activeColor } = state;
     const sorted = [...dividers].sort((a, b) => a - b);
     let bandIdx = bands.length - 1;
     for (let i = 0; i < sorted.length; i++) {
-      if (y < sorted[i]) { bandIdx = i; break; }
+      if (coord < sorted[i]) { bandIdx = i; break; }
     }
     const band = bands[bandIdx];
     if (band) paintBand(band.id, activeColor);
   }, [state, paintBand]);
 
-  const getBandAtY = useCallback((y) => {
+  const getBandAtY = useCallback((coord) => {
     const { dividers, bands } = state;
     const sorted = [...dividers].sort((a, b) => a - b);
     let bandIdx = bands.length - 1;
     for (let i = 0; i < sorted.length; i++) {
-      if (y < sorted[i]) { bandIdx = i; break; }
+      if (coord < sorted[i]) { bandIdx = i; break; }
     }
     return bands[bandIdx] ?? null;
   }, [state]);
 
-  const getNearestDivider = useCallback((y, threshold = 12) => {
+  const getNearestDivider = useCallback((coord, threshold = 12) => {
     const { dividers } = state;
     let nearest = null, minDist = Infinity;
     dividers.forEach((d, i) => {
-      const dist = Math.abs(d - y);
+      const dist = Math.abs(d - coord);
       if (dist < minDist) { minDist = dist; nearest = i; }
     });
     return minDist <= threshold ? nearest : null;
@@ -104,6 +107,7 @@ export function useBandEngine() {
     displayDims: state.displayDims,
     originalDims: state.originalDims,
     displayScale: state.displayScale,
+    dividerAxis: state.dividerAxis,
   }), [state]);
 
   return {
@@ -137,5 +141,6 @@ export function useBandEngine() {
     pickColorFromCanvas,
     loadProject,
     getSerializableState,
+    setDividerAxis,
   };
 }

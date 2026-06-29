@@ -20,6 +20,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('Bands');
   const [gradientMode, setGradientMode] = useState(false);
   const [toast, setToast] = useState(null);
+  const [hoveredBandId, setHoveredBandId] = useState(null);
   const fileInputRef = useRef(null);
 
   const showToast = useCallback((msg, type = 'info') => {
@@ -30,6 +31,12 @@ export default function App() {
   const { handleInputChange, handleDrop, handleDragOver, loading } = useImageLoader(loadImage);
 
   const hasImage = !!state.displayDims;
+
+  const handleSetDividerAxis = useCallback((axis) => {
+    if (axis === state.dividerAxis) return;
+    engine.setDividerAxis(axis);
+    showToast(`Switched to ${axis} bands — dividers cleared`, 'info');
+  }, [engine, state.dividerAxis, showToast]);
 
   // Export helpers
   const getExportCanvas = useCallback(() => {
@@ -112,35 +119,39 @@ export default function App() {
     engine.setGradient(bandId, gradient);
   }, [state.selectedBandId, engine, showToast]);
 
+  const axisLabel = state.dividerAxis === 'vertical' ? 'Vertical band coloring' : 'Horizontal band coloring';
+
   return (
     <div
-      className="flex flex-col h-screen overflow-hidden bg-[#0a0a0a] text-[#eee]"
+      className="flex flex-col h-screen overflow-hidden bg-slate-50 text-slate-900"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] flex-shrink-0">
+      <header className="flex items-center justify-between px-5 py-3 bg-white border-b border-slate-200 flex-shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
-          <span className="text-xl">🧵</span>
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-sm font-bold shadow">
+            🧵
+          </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight leading-tight">Textile Band Colorizer</h1>
-            <p className="text-[10px] text-[#444] leading-tight">Horizontal band coloring · white fills only · black stays black</p>
+            <h1 className="text-sm font-bold tracking-tight text-slate-900 leading-tight">Textile Band Colorizer</h1>
+            <p className="text-[10px] text-slate-400 leading-tight">{axisLabel} · white fills only · black stays black</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {hasImage && (
-            <div className="flex gap-3 text-xs text-[#555] border border-[#1a1a1a] rounded px-3 py-1.5">
-              <span><span className="text-white font-semibold">{state.bands.length}</span> bands</span>
-              <span className="text-[#333]">·</span>
-              <span><span className="text-white font-semibold">{state.bands.filter(b => b.color || b.gradient).length}</span> painted</span>
-              <span className="text-[#333]">·</span>
-              <span className="text-[#444]">{state.originalDims?.w}×{state.originalDims?.h}</span>
+            <div className="flex gap-3 text-xs text-slate-500 border border-slate-200 rounded-lg px-3 py-1.5 bg-white shadow-sm">
+              <span><span className="text-slate-900 font-semibold">{state.bands.length}</span> bands</span>
+              <span className="text-slate-300">·</span>
+              <span><span className="text-slate-900 font-semibold">{state.bands.filter(b => b.color || b.gradient).length}</span> painted</span>
+              <span className="text-slate-300">·</span>
+              <span className="text-slate-400 font-mono">{state.originalDims?.w}×{state.originalDims?.h}</span>
             </div>
           )}
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-lg border border-[#333] text-sm text-[#ccc] hover:border-[#555] hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+            className="flex items-center gap-2 px-4 py-1.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 font-medium hover:border-blue-400 hover:text-blue-700 transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
           >
             {loading ? '⏳ Loading…' : '📂 Upload Image'}
           </button>
@@ -155,7 +166,7 @@ export default function App() {
       </header>
 
       {/* Toolbar */}
-      <div className="px-4 py-2 border-b border-[#1a1a1a] flex-shrink-0">
+      <div className="px-5 py-2.5 border-b border-slate-200 bg-white flex-shrink-0">
         <Toolbar
           tool={state.tool}
           setTool={engine.setTool}
@@ -166,12 +177,14 @@ export default function App() {
           showOriginal={state.showOriginal}
           onSaveProject={handleSaveProject}
           onLoadProject={handleLoadProject}
+          dividerAxis={state.dividerAxis}
+          onSetDividerAxis={handleSetDividerAxis}
         />
       </div>
 
       {/* Main content */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Canvas */}
+        {/* Canvas area */}
         <div className="flex-1 p-3 min-w-0 flex flex-col">
           <CanvasView
             displayImageDataRef={displayImageDataRef}
@@ -185,29 +198,25 @@ export default function App() {
             onNudgeDivider={engine.nudgeDivider}
             getNearestDivider={engine.getNearestDivider}
             getBandAtY={engine.getBandAtY}
+            onHoverBand={setHoveredBandId}
+            highlightBandId={hoveredBandId}
           />
         </div>
 
         {/* Right panel */}
-        <div className="w-60 flex-shrink-0 flex flex-col border-l border-[#1a1a1a] overflow-hidden">
+        <div className="w-64 flex-shrink-0 flex flex-col border-l border-slate-200 bg-white overflow-hidden">
           {/* Tabs */}
-          <div className="flex border-b border-[#1a1a1a] flex-shrink-0">
+          <div className="flex border-b border-slate-200 flex-shrink-0">
             {PANEL_TABS.map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
+                className="flex-1 py-2.5 text-xs font-medium transition-colors"
                 style={{
-                  flex: 1,
-                  padding: '8px 0',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  color: activeTab === tab ? '#fff' : '#555',
-                  borderBottom: activeTab === tab ? '2px solid #2471a3' : '2px solid transparent',
+                  color: activeTab === tab ? '#1d4ed8' : '#94a3b8',
+                  borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent',
                   background: 'transparent',
-                  border: 'none',
-                  borderBottom: activeTab === tab ? '2px solid #2471a3' : '2px solid transparent',
                   cursor: 'pointer',
-                  transition: 'color 0.15s',
                 }}
               >
                 {tab}
@@ -222,6 +231,7 @@ export default function App() {
                 bands={state.bands}
                 dividers={state.dividers}
                 selectedBandId={state.selectedBandId}
+                dividerAxis={state.dividerAxis}
                 onSelect={engine.selectBand}
                 onRename={engine.renameBand}
                 onToggleLock={engine.toggleLock}
@@ -229,6 +239,8 @@ export default function App() {
                 onCopy={engine.copyColor}
                 onPaste={engine.pasteColor}
                 copiedColor={state.copiedColor}
+                hoveredBandId={hoveredBandId}
+                onHoverBand={setHoveredBandId}
               />
             )}
             {activeTab === 'Colors' && (
@@ -243,6 +255,7 @@ export default function App() {
                 onSetGradient={handleSetGradient}
                 gradientMode={gradientMode}
                 onGradientModeChange={setGradientMode}
+                dividerAxis={state.dividerAxis}
               />
             )}
             {activeTab === 'Export' && (
@@ -260,11 +273,11 @@ export default function App() {
       {/* Toast */}
       {toast && (
         <div
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-medium z-50"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-medium z-50 shadow-lg"
           style={{
-            background: toast.type === 'success' ? '#1e4d32' : toast.type === 'error' ? '#4d1e1e' : '#1a1a2e',
-            border: `1px solid ${toast.type === 'success' ? '#2a7a50' : toast.type === 'error' ? '#7a2a2a' : '#2a2a4e'}`,
-            color: '#fff',
+            background: toast.type === 'success' ? '#f0fdf4' : toast.type === 'error' ? '#fef2f2' : '#eff6ff',
+            border: `1px solid ${toast.type === 'success' ? '#86efac' : toast.type === 'error' ? '#fca5a5' : '#93c5fd'}`,
+            color: toast.type === 'success' ? '#15803d' : toast.type === 'error' ? '#b91c1c' : '#1d4ed8',
             whiteSpace: 'nowrap',
           }}
         >

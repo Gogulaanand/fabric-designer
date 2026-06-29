@@ -6,8 +6,11 @@ export const INITIAL_STATE = {
   displayDims: null,
   displayScale: 1,
 
+  // Divider direction: 'horizontal' (rows) | 'vertical' (columns)
+  dividerAxis: 'horizontal',
+
   // Band structure
-  dividers: [],   // sorted Y positions in display coords
+  dividers: [],   // sorted positions in display coords (Y when horizontal, X when vertical)
   bands: [],      // Band[], length === dividers.length + 1
 
   // UI state
@@ -18,6 +21,7 @@ export const INITIAL_STATE = {
 
   // Clipboard
   copiedColor: null,
+  copiedGradient: null,
 
   // View
   showOriginal: false,
@@ -36,7 +40,6 @@ export function bandReducer(state, action) {
 
     case 'LOAD_IMAGE': {
       const { originalDims, displayDims, displayScale } = action;
-      // Create a single initial band
       return {
         ...INITIAL_STATE,
         originalDims,
@@ -46,15 +49,28 @@ export function bandReducer(state, action) {
         bands: [makeBand('Band 1')],
         swatches: state.swatches,
         activeColor: state.activeColor,
+        dividerAxis: state.dividerAxis,
+      };
+    }
+
+    case 'SET_DIVIDER_AXIS': {
+      if (action.axis === state.dividerAxis) return state;
+      return {
+        ...state,
+        dividerAxis: action.axis,
+        dividers: [],
+        bands: [makeBand('Band 1')],
+        selectedBandId: null,
       };
     }
 
     case 'ADD_DIVIDER': {
       const { y } = action;
-      const { dividers, bands } = state;
+      const { dividers, bands, dividerAxis, displayDims } = state;
 
-      // Clamp to image
-      const clampedY = Math.max(1, Math.min(y, state.displayDims.h - 1));
+      // Clamp to image (x-axis when vertical, y-axis when horizontal)
+      const limit = dividerAxis === 'vertical' ? displayDims.w : displayDims.h;
+      const clampedY = Math.max(1, Math.min(y, limit - 1));
 
       // Don't add duplicate
       if (dividers.some(d => Math.abs(d - clampedY) < 2)) return state;
@@ -88,10 +104,11 @@ export function bandReducer(state, action) {
 
     case 'MOVE_DIVIDER': {
       const { index, y } = action;
-      const { dividers, displayDims } = state;
+      const { dividers, displayDims, dividerAxis } = state;
       if (index < 0 || index >= dividers.length) return state;
 
-      const clampedY = Math.max(1, Math.min(y, displayDims.h - 1));
+      const limit = dividerAxis === 'vertical' ? displayDims.w : displayDims.h;
+      const clampedY = Math.max(1, Math.min(y, limit - 1));
       const newDivs = [...dividers];
       newDivs[index] = clampedY;
       newDivs.sort((a, b) => a - b);
@@ -101,9 +118,10 @@ export function bandReducer(state, action) {
 
     case 'NUDGE_DIVIDER': {
       const { index, delta } = action;
-      const { dividers } = state;
+      const { dividers, displayDims, dividerAxis } = state;
       if (index < 0 || index >= dividers.length) return state;
-      const newY = Math.max(1, Math.min(dividers[index] + delta, state.displayDims.h - 1));
+      const limit = dividerAxis === 'vertical' ? displayDims.w : displayDims.h;
+      const newY = Math.max(1, Math.min(dividers[index] + delta, limit - 1));
       const newDivs = [...dividers];
       newDivs[index] = newY;
       newDivs.sort((a, b) => a - b);
@@ -132,6 +150,8 @@ export function bandReducer(state, action) {
 
     case 'CLEAR_BAND': {
       const { bandId } = action;
+      const band = state.bands.find(b => b.id === bandId);
+      if (!band || band.locked) return state;
       return {
         ...state,
         bands: state.bands.map(b => b.id === bandId ? { ...b, color: null, gradient: null } : b),
@@ -178,17 +198,19 @@ export function bandReducer(state, action) {
 
     case 'COPY_COLOR': {
       const band = state.bands.find(b => b.id === action.bandId);
-      return { ...state, copiedColor: band?.color ?? null };
+      if (!band) return state;
+      // Copy whichever fill is active: solid color or gradient
+      return { ...state, copiedColor: band.color ?? null, copiedGradient: band.gradient ?? null };
     }
 
     case 'PASTE_COLOR': {
-      if (!state.copiedColor) return state;
+      if (!state.copiedColor && !state.copiedGradient) return state;
       const band = state.bands.find(b => b.id === action.bandId);
       if (!band || band.locked) return state;
       return {
         ...state,
         bands: state.bands.map(b => b.id === action.bandId
-          ? { ...b, color: state.copiedColor, gradient: null }
+          ? { ...b, color: state.copiedColor, gradient: state.copiedGradient }
           : b),
       };
     }
@@ -213,6 +235,7 @@ export function bandReducer(state, action) {
         originalDims: action.originalDims ?? state.originalDims,
         displayDims: action.displayDims ?? state.displayDims,
         displayScale: action.displayScale ?? state.displayScale,
+        dividerAxis: action.dividerAxis ?? state.dividerAxis,
       };
     }
 
@@ -222,6 +245,7 @@ export function bandReducer(state, action) {
         dividers: [],
         bands: [makeBand('Band 1')],
         selectedBandId: null,
+        // dividerAxis preserved intentionally
       };
     }
 

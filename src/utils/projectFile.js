@@ -1,4 +1,31 @@
 const PROJECT_VERSION = 1;
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+function validateHex(val) {
+  return typeof val === 'string' && HEX_RE.test(val) ? val : null;
+}
+
+function sanitizeColor(c) {
+  if (!c || typeof c !== 'object') return null;
+  const hex = validateHex(c.hex);
+  if (!hex) return null;
+  return { hex, rgb: Array.isArray(c.rgb) && c.rgb.length === 3 ? c.rgb.map(Number) : [0, 0, 0], name: String(c.name ?? '') };
+}
+
+function sanitizeBand(b) {
+  if (!b || typeof b !== 'object') return null;
+  const id = typeof b.id === 'string' && b.id.length > 0 ? b.id : crypto.randomUUID();
+  const gradient = b.gradient && sanitizeColor(b.gradient.top) && sanitizeColor(b.gradient.bottom)
+    ? { top: sanitizeColor(b.gradient.top), bottom: sanitizeColor(b.gradient.bottom) }
+    : null;
+  return {
+    id,
+    name: String(b.name ?? 'Band'),
+    color: sanitizeColor(b.color),
+    gradient,
+    locked: !!b.locked,
+  };
+}
 
 export function serializeProject(state) {
   return JSON.stringify({
@@ -21,17 +48,29 @@ export function serializeProject(state) {
 
 export function deserializeProject(json) {
   const data = JSON.parse(json);
+  if (typeof data !== 'object' || data === null) throw new Error('Invalid project file');
   if (data.version !== PROJECT_VERSION) {
     throw new Error(`Unsupported project version: ${data.version}`);
   }
-  return {
-    dividers: data.dividers ?? [],
-    bands: data.bands ?? [],
-    swatches: data.swatches ?? [],
-    displayDims: data.displayDims,
-    originalDims: data.originalDims,
-    displayScale: data.displayScale,
-  };
+
+  const dividers = Array.isArray(data.dividers)
+    ? data.dividers.filter(d => typeof d === 'number' && isFinite(d))
+    : [];
+
+  const bands = Array.isArray(data.bands)
+    ? data.bands.map(sanitizeBand).filter(Boolean)
+    : [];
+
+  // Ensure bands.length === dividers.length + 1
+  while (bands.length < dividers.length + 1) {
+    bands.push({ id: crypto.randomUUID(), name: `Band ${bands.length + 1}`, color: null, gradient: null, locked: false });
+  }
+
+  const swatches = Array.isArray(data.swatches)
+    ? data.swatches.map(sanitizeColor).filter(Boolean)
+    : [];
+
+  return { dividers, bands, swatches, displayDims: data.displayDims, originalDims: data.originalDims, displayScale: data.displayScale };
 }
 
 export function downloadJSON(filename, content) {

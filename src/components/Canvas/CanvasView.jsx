@@ -15,19 +15,29 @@ export function CanvasView({
   onNudgeDivider,
   getNearestDivider,
   getBandAtY,
+  onHoverBand,
+  highlightBandId,
 }) {
   const containerRef = useRef(null);
   const displayCanvasRef = useRef(null);
   const overlayRef = useRef(null);
-  const { scale, offset, zoom, startPan, continuePan, endPan, resetView, screenToImage } = useZoomPan();
+  const { scale, offset, zoom, startPan, continuePan, endPan, resetView, fitView, screenToImage } = useZoomPan();
 
-  const [hoverY, setHoverY] = useState(null);
-  const [dragDivIdx, setDragDivIdx] = useState(null);
+  const [hoverCoord, setHoverCoord] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragAnchorRef = useRef(null);
   const [selectedDivIdx, setSelectedDivIdx] = useState(null);
+  const spacebarRef = useRef(false);
+  const lastHoveredBandIdRef = useRef(null);
 
-  const { tool, dividers, bands, displayDims, showOriginal } = state;
+  const { tool, dividers, bands, displayDims, showOriginal, dividerAxis } = state;
+  const isVertical = dividerAxis === 'vertical';
 
-  // Draw the colorized / original image layer
+  useEffect(() => {
+    setSelectedDivIdx(null);
+  }, [dividerAxis]);
+
+  // Draw colorized / original image layer
   useEffect(() => {
     const canvas = displayCanvasRef.current;
     if (!canvas || !displayDims) return;
@@ -42,9 +52,10 @@ export function CanvasView({
       if (offscreen) ctx.drawImage(offscreen, 0, 0);
       else if (displayImageDataRef.current) ctx.putImageData(displayImageDataRef.current, 0, 0);
     }
-  }, [displayDims, showOriginal, bands, dividers, getOffscreenCanvas]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayDims, showOriginal, bands, dividers, dividerAxis, getOffscreenCanvas]);
 
-  // Draw the overlay layer (dividers, labels, hover guide)
+  // Draw overlay layer (dividers, labels, hover guide, band highlight)
   useEffect(() => {
     const canvas = overlayRef.current;
     if (!canvas || !displayDims) return;
@@ -57,22 +68,55 @@ export function CanvasView({
 
     const sorted = [...dividers].sort((a, b) => a - b);
 
+    // Band highlight (from sidebar hover)
+    if (highlightBandId) {
+      const bandIdx = bands.findIndex(b => b.id === highlightBandId);
+      if (bandIdx >= 0) {
+        const limit = isVertical ? displayDims.w : displayDims.h;
+        const start = bandIdx === 0 ? 0 : sorted[bandIdx - 1];
+        const end = bandIdx < sorted.length ? sorted[bandIdx] : limit;
+        ctx.save();
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.18)';
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.7)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        if (isVertical) {
+          ctx.fillRect(start, 0, end - start, displayDims.h);
+          ctx.strokeRect(start + 1, 1, end - start - 2, displayDims.h - 2);
+        } else {
+          ctx.fillRect(0, start, displayDims.w, end - start);
+          ctx.strokeRect(1, start + 1, displayDims.w - 2, end - start - 2);
+        }
+        ctx.restore();
+      }
+    }
+
     // Hover guide line
-    if (hoverY !== null && (tool === 'addDiv' || tool === 'dragDiv')) {
+    if (hoverCoord !== null && (tool === 'addDiv' || tool === 'dragDiv')) {
       ctx.save();
       ctx.strokeStyle = tool === 'addDiv' ? 'rgba(0,200,255,0.55)' : 'rgba(255,200,0,0.55)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
-      ctx.moveTo(0, hoverY);
-      ctx.lineTo(displayDims.w, hoverY);
+      if (isVertical) {
+        ctx.moveTo(hoverCoord, 0); ctx.lineTo(hoverCoord, displayDims.h);
+      } else {
+        ctx.moveTo(0, hoverCoord); ctx.lineTo(displayDims.w, hoverCoord);
+      }
       ctx.stroke();
-      // Y label
       ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(4, hoverY - 16, 52, 14);
-      ctx.fillStyle = '#0cf';
-      ctx.font = '10px monospace';
-      ctx.fillText(`y = ${hoverY}`, 6, hoverY - 4);
+      const labelText = isVertical ? `x = ${hoverCoord}` : `y = ${hoverCoord}`;
+      if (isVertical) {
+        ctx.fillRect(hoverCoord + 4, 4, 52, 14);
+        ctx.fillStyle = '#0cf';
+        ctx.font = '10px monospace';
+        ctx.fillText(labelText, hoverCoord + 6, 16);
+      } else {
+        ctx.fillRect(4, hoverCoord - 16, 52, 14);
+        ctx.fillStyle = '#0cf';
+        ctx.font = '10px monospace';
+        ctx.fillText(labelText, 6, hoverCoord - 4);
+      }
       ctx.restore();
     }
 
@@ -84,21 +128,28 @@ export function CanvasView({
       ctx.lineWidth = isSelected ? 2 : 1.5;
       ctx.setLineDash([8, 5]);
       ctx.beginPath();
-      ctx.moveTo(0, d);
-      ctx.lineTo(displayDims.w, d);
+      if (isVertical) {
+        ctx.moveTo(d, 0); ctx.lineTo(d, displayDims.h);
+      } else {
+        ctx.moveTo(0, d); ctx.lineTo(displayDims.w, d);
+      }
       ctx.stroke();
 
-      // Grab handle dot
       ctx.setLineDash([]);
       ctx.fillStyle = isSelected ? '#ffcc00' : 'rgba(255,80,80,0.9)';
       ctx.beginPath();
-      ctx.arc(displayDims.w / 2, d, 5, 0, Math.PI * 2);
+      if (isVertical) {
+        ctx.arc(d, displayDims.h / 2, 5, 0, Math.PI * 2);
+      } else {
+        ctx.arc(displayDims.w / 2, d, 5, 0, Math.PI * 2);
+      }
       ctx.fill();
       ctx.restore();
     });
 
     // Band labels
-    const bounds = [0, ...sorted, displayDims.h];
+    const limit = isVertical ? displayDims.w : displayDims.h;
+    const bounds = [0, ...sorted, limit];
     for (let i = 0; i < bounds.length - 1; i++) {
       const mid = (bounds[i] + bounds[i + 1]) / 2;
       const band = bands[i];
@@ -112,36 +163,57 @@ export function CanvasView({
       ctx.shadowColor = '#000';
       ctx.shadowBlur = 5;
       ctx.fillStyle = colorHex;
-      ctx.fillText(label, 8, mid + 4);
+      if (isVertical) {
+        ctx.fillText(label, mid - 20, 18);
+      } else {
+        ctx.fillText(label, 8, mid + 4);
+      }
       ctx.restore();
     }
-  }, [dividers, bands, displayDims, hoverY, tool, selectedDivIdx, showOriginal]);
+  }, [dividers, bands, displayDims, hoverCoord, tool, selectedDivIdx, showOriginal, isVertical, highlightBandId]);
 
-  const getImageY = useCallback((e) => {
+  const getImageCoord = useCallback((e) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return null;
-    return screenToImage(e.clientX, e.clientY, rect).y;
-  }, [screenToImage]);
+    const pt = screenToImage(e.clientX, e.clientY, rect);
+    return isVertical ? pt.x : pt.y;
+  }, [screenToImage, isVertical]);
 
   const handleMouseMove = useCallback((e) => {
     if (!displayDims) return;
-    const y = getImageY(e);
-    if (y === null || y < 0 || y >= displayDims.h) { setHoverY(null); return; }
-    setHoverY(y);
+    const coord = getImageCoord(e);
+    const limit = isVertical ? displayDims.w : displayDims.h;
+    if (coord === null || coord < 0 || coord >= limit) { setHoverCoord(null); return; }
+    setHoverCoord(Math.round(coord));
 
-    if (dragDivIdx !== null) {
-      onMoveDivider(dragDivIdx, y);
-    } else if (e.buttons === 1 && (e.altKey || e.button === 1)) {
+    if (isDragging && dragAnchorRef.current !== null) {
+      const currentIdx = getNearestDivider(dragAnchorRef.current, 9999);
+      if (currentIdx !== null) {
+        onMoveDivider(currentIdx, Math.round(coord));
+        dragAnchorRef.current = Math.round(coord);
+      }
+    } else if ((e.buttons === 4) || (e.buttons === 1 && (e.altKey || spacebarRef.current))) {
       continuePan(e.clientX, e.clientY);
     }
-  }, [displayDims, getImageY, dragDivIdx, onMoveDivider, continuePan]);
+
+    // Track hovered band (only fire when crossing band boundaries to avoid thrashing App state)
+    if (onHoverBand && !isDragging) {
+      const band = getBandAtY(Math.round(coord));
+      const bandId = band?.id ?? null;
+      if (bandId !== lastHoveredBandIdRef.current) {
+        lastHoveredBandIdRef.current = bandId;
+        onHoverBand(bandId);
+      }
+    }
+  }, [displayDims, getImageCoord, isDragging, getNearestDivider, onMoveDivider, continuePan, isVertical, onHoverBand, getBandAtY]);
 
   const handleMouseDown = useCallback((e) => {
     if (!displayDims) return;
-    const y = getImageY(e);
-    if (y === null) return;
+    const coord = getImageCoord(e);
+    if (coord === null) return;
+    const roundedCoord = Math.round(coord);
 
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    if (e.button === 1 || (e.button === 0 && (e.altKey || spacebarRef.current))) {
       e.preventDefault();
       startPan(e.clientX, e.clientY);
       return;
@@ -149,24 +221,43 @@ export function CanvasView({
     if (e.button !== 0) return;
 
     if (tool === 'addDiv') {
-      onAddDivider(y);
+      onAddDivider(roundedCoord);
     } else if (tool === 'rmDiv') {
-      const idx = getNearestDivider(y, Math.round(DIVIDER_SNAP_PX / scale));
+      const idx = getNearestDivider(roundedCoord, Math.round(DIVIDER_SNAP_PX / scale));
       if (idx !== null) onRemoveDivider(idx);
     } else if (tool === 'dragDiv') {
-      const idx = getNearestDivider(y, Math.round(DIVIDER_SNAP_PX / scale));
-      if (idx !== null) { setDragDivIdx(idx); setSelectedDivIdx(idx); }
+      const idx = getNearestDivider(roundedCoord, Math.round(DIVIDER_SNAP_PX / scale));
+      if (idx !== null) {
+        dragAnchorRef.current = dividers[idx];
+        setIsDragging(true);
+        setSelectedDivIdx(idx);
+      }
     } else if (tool === 'paint') {
-      onPaintBandByY(y);
-      const band = getBandAtY(y);
+      onPaintBandByY(roundedCoord);
+      const band = getBandAtY(roundedCoord);
       if (band) onSelectBand(band.id);
     }
-  }, [displayDims, getImageY, tool, scale, onAddDivider, onRemoveDivider, onPaintBandByY, onSelectBand, getBandAtY, getNearestDivider, startPan]);
+  }, [displayDims, getImageCoord, tool, scale, dividers, onAddDivider, onRemoveDivider, onPaintBandByY, onSelectBand, getBandAtY, getNearestDivider, startPan]);
 
   const handleMouseUp = useCallback(() => {
-    setDragDivIdx(null);
+    const lastAnchor = dragAnchorRef.current;
+    setIsDragging(false);
+    dragAnchorRef.current = null;
+    // Re-resolve selected divider index by anchor position — survives sort reordering
+    if (lastAnchor !== null) {
+      setSelectedDivIdx(getNearestDivider(lastAnchor, Infinity));
+    }
     endPan();
-  }, [endPan]);
+  }, [endPan, getNearestDivider]);
+
+  const handleMouseLeave = useCallback(() => {
+    setHoverCoord(null);
+    endPan();
+    setIsDragging(false);
+    dragAnchorRef.current = null;
+    lastHoveredBandIdRef.current = null;
+    onHoverBand?.(null);
+  }, [endPan, onHoverBand]);
 
   const handleWheel = useCallback((e) => {
     e.preventDefault();
@@ -176,42 +267,93 @@ export function CanvasView({
   }, [zoom]);
 
   const handleKeyDown = useCallback((e) => {
+    if (e.key === ' ') { e.preventDefault(); spacebarRef.current = true; return; }
+
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        const r = containerRef.current?.getBoundingClientRect();
+        if (r) zoom(100, r.left + r.width / 2, r.top + r.height / 2, r);
+        return;
+      }
+      if (e.key === '-') {
+        e.preventDefault();
+        const r = containerRef.current?.getBoundingClientRect();
+        if (r) zoom(-100, r.left + r.width / 2, r.top + r.height / 2, r);
+        return;
+      }
+    }
+
     if (selectedDivIdx === null) return;
-    if (e.key === 'ArrowUp') { e.preventDefault(); onNudgeDivider(selectedDivIdx, e.shiftKey ? -10 : -1); }
-    if (e.key === 'ArrowDown') { e.preventDefault(); onNudgeDivider(selectedDivIdx, e.shiftKey ? 10 : 1); }
+    if (isVertical) {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); onNudgeDivider(selectedDivIdx, e.shiftKey ? -10 : -1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); onNudgeDivider(selectedDivIdx, e.shiftKey ? 10 : 1); }
+    } else {
+      if (e.key === 'ArrowUp') { e.preventDefault(); onNudgeDivider(selectedDivIdx, e.shiftKey ? -10 : -1); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); onNudgeDivider(selectedDivIdx, e.shiftKey ? 10 : 1); }
+    }
     if (e.key === 'Escape') setSelectedDivIdx(null);
-  }, [selectedDivIdx, onNudgeDivider]);
+  }, [selectedDivIdx, onNudgeDivider, isVertical, zoom]);
+
+  const handleKeyUp = useCallback((e) => {
+    if (e.key === ' ') spacebarRef.current = false;
+  }, []);
+
+  const handleFitView = useCallback(() => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect && displayDims) fitView(rect, displayDims);
+  }, [fitView, displayDims]);
 
   const cursorMap = {
     addDiv: 'crosshair',
     paint: 'cell',
-    dragDiv: dragDivIdx !== null ? 'ns-resize' : 'row-resize',
+    dragDiv: isDragging
+      ? (isVertical ? 'ew-resize' : 'ns-resize')
+      : (isVertical ? 'col-resize' : 'row-resize'),
     rmDiv: 'pointer',
   };
 
+  const dividerLabel = selectedDivIdx !== null && dividers[selectedDivIdx] !== undefined
+    ? `Divider ${selectedDivIdx + 1} · ${isVertical ? 'x' : 'y'} = ${dividers[selectedDivIdx]}px · ${isVertical ? '←→' : '↑↓'} nudge · Shift = ×10`
+    : null;
+
   return (
     <div
-      className="relative flex-1 overflow-hidden rounded-lg border border-[#222] bg-[#050505] select-none min-h-0"
+      className="relative flex-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 select-none min-h-0"
       tabIndex={0}
       onKeyDown={handleKeyDown}
+      onKeyUp={handleKeyUp}
       style={{ outline: 'none' }}
     >
       {/* Zoom controls */}
       <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
-        <ViewBtn onClick={() => { const r = containerRef.current?.getBoundingClientRect(); r && zoom(100, r.left + r.width/2, r.top + r.height/2, r); }} title="Zoom in">+</ViewBtn>
-        <ViewBtn onClick={() => { const r = containerRef.current?.getBoundingClientRect(); r && zoom(-100, r.left + r.width/2, r.top + r.height/2, r); }} title="Zoom out">−</ViewBtn>
-        <ViewBtn onClick={resetView} title="Reset view">⊡</ViewBtn>
-        <span className="text-[10px] text-[#444] px-1">{Math.round(scale * 100)}%</span>
+        <ViewBtn onClick={() => { const r = containerRef.current?.getBoundingClientRect(); if (r) zoom(100, r.left + r.width/2, r.top + r.height/2, r); }} title="Zoom in (Ctrl+=)">+</ViewBtn>
+        <ViewBtn onClick={() => { const r = containerRef.current?.getBoundingClientRect(); if (r) zoom(-100, r.left + r.width/2, r.top + r.height/2, r); }} title="Zoom out (Ctrl+-)">−</ViewBtn>
+        <ViewBtn onClick={handleFitView} title="Fit to window">⊡</ViewBtn>
+        <ViewBtn onClick={resetView} title="Reset to 100%">1:1</ViewBtn>
+        <span className="text-[10px] text-slate-400 px-1 font-mono">{Math.round(scale * 100)}%</span>
       </div>
 
-      {/* Canvas container with transform */}
+      {/* Ruler strip — screen-space, outside the transform so numbers stay readable at any zoom */}
+      {displayDims && !showOriginal && dividers.length > 0 && (
+        <RulerStrip
+          dividers={dividers}
+          bands={bands}
+          displayDims={displayDims}
+          scale={scale}
+          offset={offset}
+          isVertical={isVertical}
+        />
+      )}
+
+      {/* Canvas container with zoom/pan transform */}
       <div
         ref={containerRef}
         className="absolute inset-0"
         onMouseMove={handleMouseMove}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
-        onMouseLeave={() => { setHoverY(null); endPan(); setDragDivIdx(null); }}
+        onMouseLeave={handleMouseLeave}
         onWheel={handleWheel}
         style={{ cursor: cursorMap[tool] ?? 'default', overflow: 'hidden' }}
       >
@@ -233,19 +375,107 @@ export function CanvasView({
 
       {/* Empty state */}
       {!displayDims && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-[#2a2a2a] pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 pointer-events-none">
           <div className="text-6xl mb-4">🧵</div>
-          <p className="text-base">Upload your B&amp;W textile image to begin</p>
-          <p className="text-xs mt-2 text-[#1e1e1e]">Works best with high-contrast images · JPG, PNG, WebP</p>
+          <p className="text-base font-medium text-slate-500">Upload your B&amp;W textile image to begin</p>
+          <p className="text-xs mt-2 text-slate-400">Works best with high-contrast images · JPG, PNG, WebP</p>
         </div>
       )}
 
       {/* Selected divider info bar */}
-      {selectedDivIdx !== null && dividers[selectedDivIdx] !== undefined && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-[#111] border border-[#333] rounded px-3 py-1 text-xs text-[#ffcc00] font-mono z-10 whitespace-nowrap">
-          Divider {selectedDivIdx + 1} · y = {dividers[selectedDivIdx]}px · ↑↓ nudge · Shift = ×10
+      {dividerLabel && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white border border-amber-300 rounded-lg px-3 py-1 text-xs text-amber-700 font-mono z-10 whitespace-nowrap shadow-sm">
+          {dividerLabel}
         </div>
       )}
+    </div>
+  );
+}
+
+// Ruler rendered in screen space (outside the zoom transform) so numbers stay sharp at any zoom level.
+// For horizontal axis: left-side vertical strip showing Y-position band numbers.
+// For vertical axis: top horizontal strip showing X-position band numbers.
+function RulerStrip({ dividers, bands, displayDims, scale, offset, isVertical }) {
+  const sorted = [...dividers].sort((a, b) => a - b);
+  const limit = isVertical ? displayDims.w : displayDims.h;
+  const bounds = [0, ...sorted, limit];
+  const RULER_SIZE = 22;
+
+  // Convert image coordinate to screen coordinate within the container
+  const toScreen = (imageCoord) =>
+    imageCoord * scale + (isVertical ? offset.x : offset.y);
+
+  if (isVertical) {
+    return (
+      <div
+        className="absolute top-0 left-0 right-0 z-[5] pointer-events-none overflow-hidden"
+        style={{ height: RULER_SIZE, background: 'rgba(255,255,255,0.9)', borderBottom: '1px solid #e2e8f0' }}
+      >
+        {sorted.map((d, i) => (
+          <div
+            key={i}
+            className="absolute top-0 bottom-0 w-px"
+            style={{ left: toScreen(d), background: '#f87171' }}
+          />
+        ))}
+        {bounds.slice(0, -1).map((start, i) => {
+          const end = bounds[i + 1];
+          const screenMid = toScreen((start + end) / 2);
+          const screenBandSize = (end - start) * scale;
+          if (screenBandSize < 12) return null;
+          const band = bands[i];
+          const isPainted = !!(band?.color || band?.gradient);
+          const color = band?.color?.hex ?? band?.gradient?.top?.hex ?? '#94a3b8';
+          return (
+            <div
+              key={i}
+              className="absolute top-0 flex items-center justify-center"
+              style={{ left: screenMid - 10, width: 20, height: RULER_SIZE }}
+            >
+              <span className="text-[9px] font-bold leading-none select-none"
+                style={{ color: isPainted ? color : '#94a3b8' }}>
+                {i + 1}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="absolute top-0 left-0 bottom-0 z-[5] pointer-events-none overflow-hidden"
+      style={{ width: RULER_SIZE, background: 'rgba(255,255,255,0.9)', borderRight: '1px solid #e2e8f0' }}
+    >
+      {sorted.map((d, i) => (
+        <div
+          key={i}
+          className="absolute left-0 right-0 h-px"
+          style={{ top: toScreen(d), background: '#f87171' }}
+        />
+      ))}
+      {bounds.slice(0, -1).map((start, i) => {
+        const end = bounds[i + 1];
+        const screenMid = toScreen((start + end) / 2);
+        const screenBandSize = (end - start) * scale;
+        if (screenBandSize < 12) return null;
+        const band = bands[i];
+        const isPainted = !!(band?.color || band?.gradient);
+        const color = band?.color?.hex ?? band?.gradient?.top?.hex ?? '#94a3b8';
+        return (
+          <div
+            key={i}
+            className="absolute left-0 flex items-center justify-center"
+            style={{ top: screenMid - 10, height: 20, width: RULER_SIZE }}
+          >
+            <span className="text-[9px] font-bold leading-none select-none"
+              style={{ color: isPainted ? color : '#94a3b8' }}>
+              {i + 1}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -255,7 +485,7 @@ function ViewBtn({ children, onClick, title }) {
     <button
       onClick={onClick}
       title={title}
-      className="w-7 h-7 bg-[#111] border border-[#333] rounded text-[#888] hover:text-white hover:border-[#555] text-sm font-bold transition-colors"
+      className="min-w-7 h-7 px-1 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-slate-800 hover:border-slate-400 text-sm font-bold transition-colors shadow-sm"
     >
       {children}
     </button>

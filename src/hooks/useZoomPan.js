@@ -9,7 +9,7 @@ export function useZoomPan() {
 
   const zoom = useCallback((delta, clientX, clientY, containerRect) => {
     setScale(prev => {
-      const newScale = Math.max(0.1, Math.min(8, prev * (delta > 0 ? 1.1 : 0.9)));
+      const newScale = Math.max(0.1, Math.min(20, prev * (delta > 0 ? 1.1 : 0.9)));
       // Zoom toward cursor
       const ratio = newScale / prev;
       setOffset(off => ({
@@ -43,6 +43,17 @@ export function useZoomPan() {
     setOffset({ x: 0, y: 0 });
   }, []);
 
+  const fitView = useCallback((containerRect, imageDims) => {
+    const sx = containerRect.width / imageDims.w;
+    const sy = containerRect.height / imageDims.h;
+    const newScale = Math.min(sx, sy) * 0.92;
+    setScale(newScale);
+    setOffset({
+      x: (containerRect.width - imageDims.w * newScale) / 2,
+      y: (containerRect.height - imageDims.h * newScale) / 2,
+    });
+  }, []);
+
   // Convert screen coords to image coords
   const screenToImage = useCallback((clientX, clientY, containerRect) => {
     return {
@@ -60,6 +71,7 @@ export function useZoomPan() {
     continuePan,
     endPan,
     resetView,
+    fitView,
     screenToImage,
   };
 }
