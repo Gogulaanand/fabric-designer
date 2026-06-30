@@ -17,6 +17,8 @@ export function CanvasView({
   getBandAtY,
   onHoverBand,
   highlightBandId,
+  onStampPattern,
+  onCancelRepeatPlace,
 }) {
   const containerRef = useRef(null);
   const displayCanvasRef = useRef(null);
@@ -92,9 +94,10 @@ export function CanvasView({
     }
 
     // Hover guide line
-    if (hoverCoord !== null && (tool === 'addDiv' || tool === 'dragDiv')) {
+    if (hoverCoord !== null && (tool === 'addDiv' || tool === 'dragDiv' || tool === 'repeatPlace')) {
       ctx.save();
-      ctx.strokeStyle = tool === 'addDiv' ? 'rgba(0,200,255,0.55)' : 'rgba(255,200,0,0.55)';
+      ctx.strokeStyle = tool === 'addDiv' ? 'rgba(0,200,255,0.55)' :
+        tool === 'repeatPlace' ? 'rgba(0,230,130,0.7)' : 'rgba(255,200,0,0.55)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
@@ -107,15 +110,15 @@ export function CanvasView({
       ctx.fillStyle = 'rgba(0,0,0,0.7)';
       const labelText = isVertical ? `x = ${hoverCoord}` : `y = ${hoverCoord}`;
       if (isVertical) {
-        ctx.fillRect(hoverCoord + 4, 4, 52, 14);
+        ctx.fillRect(hoverCoord + 4, 4, 72, 18);
         ctx.fillStyle = '#0cf';
-        ctx.font = '10px monospace';
-        ctx.fillText(labelText, hoverCoord + 6, 16);
+        ctx.font = '14px monospace';
+        ctx.fillText(labelText, hoverCoord + 6, 19);
       } else {
-        ctx.fillRect(4, hoverCoord - 16, 52, 14);
+        ctx.fillRect(4, hoverCoord - 20, 72, 18);
         ctx.fillStyle = '#0cf';
-        ctx.font = '10px monospace';
-        ctx.fillText(labelText, 6, hoverCoord - 4);
+        ctx.font = '14px monospace';
+        ctx.fillText(labelText, 6, hoverCoord - 5);
       }
       ctx.restore();
     }
@@ -159,14 +162,14 @@ export function CanvasView({
       const label = `${band.name}${hasColor ? '' : ' · tap to paint'}`;
 
       ctx.save();
-      ctx.font = 'bold 11px monospace';
+      ctx.font = 'bold 14px monospace';
       ctx.shadowColor = '#000';
       ctx.shadowBlur = 5;
       ctx.fillStyle = colorHex;
       if (isVertical) {
-        ctx.fillText(label, mid - 20, 18);
+        ctx.fillText(label, mid - 20, 22);
       } else {
-        ctx.fillText(label, 8, mid + 4);
+        ctx.fillText(label, 8, mid + 5);
       }
       ctx.restore();
     }
@@ -236,8 +239,10 @@ export function CanvasView({
       onPaintBandByY(roundedCoord);
       const band = getBandAtY(roundedCoord);
       if (band) onSelectBand(band.id);
+    } else if (tool === 'repeatPlace') {
+      onStampPattern?.(roundedCoord);
     }
-  }, [displayDims, getImageCoord, tool, scale, dividers, onAddDivider, onRemoveDivider, onPaintBandByY, onSelectBand, getBandAtY, getNearestDivider, startPan]);
+  }, [displayDims, getImageCoord, tool, scale, dividers, onAddDivider, onRemoveDivider, onPaintBandByY, onSelectBand, getBandAtY, getNearestDivider, startPan, onStampPattern]);
 
   const handleMouseUp = useCallback(() => {
     const lastAnchor = dragAnchorRef.current;
@@ -284,6 +289,12 @@ export function CanvasView({
       }
     }
 
+    if (e.key === 'Escape') {
+      if (tool === 'repeatPlace') onCancelRepeatPlace?.();
+      setSelectedDivIdx(null);
+      return;
+    }
+
     if (selectedDivIdx === null) return;
     if (isVertical) {
       if (e.key === 'ArrowLeft') { e.preventDefault(); onNudgeDivider(selectedDivIdx, e.shiftKey ? -10 : -1); }
@@ -292,8 +303,7 @@ export function CanvasView({
       if (e.key === 'ArrowUp') { e.preventDefault(); onNudgeDivider(selectedDivIdx, e.shiftKey ? -10 : -1); }
       if (e.key === 'ArrowDown') { e.preventDefault(); onNudgeDivider(selectedDivIdx, e.shiftKey ? 10 : 1); }
     }
-    if (e.key === 'Escape') setSelectedDivIdx(null);
-  }, [selectedDivIdx, onNudgeDivider, isVertical, zoom]);
+  }, [selectedDivIdx, onNudgeDivider, isVertical, zoom, tool, onCancelRepeatPlace]);
 
   const handleKeyUp = useCallback((e) => {
     if (e.key === ' ') spacebarRef.current = false;
@@ -311,6 +321,7 @@ export function CanvasView({
       ? (isVertical ? 'ew-resize' : 'ns-resize')
       : (isVertical ? 'col-resize' : 'row-resize'),
     rmDiv: 'pointer',
+    repeatPlace: 'copy',
   };
 
   const dividerLabel = selectedDivIdx !== null && dividers[selectedDivIdx] !== undefined
@@ -331,7 +342,7 @@ export function CanvasView({
         <ViewBtn onClick={() => { const r = containerRef.current?.getBoundingClientRect(); if (r) zoom(-100, r.left + r.width/2, r.top + r.height/2, r); }} title="Zoom out (Ctrl+-)">−</ViewBtn>
         <ViewBtn onClick={handleFitView} title="Fit to window">⊡</ViewBtn>
         <ViewBtn onClick={resetView} title="Reset to 100%">1:1</ViewBtn>
-        <span className="text-[10px] text-slate-400 px-1 font-mono">{Math.round(scale * 100)}%</span>
+        <span className="text-sm text-slate-400 px-1 font-mono">{Math.round(scale * 100)}%</span>
       </div>
 
       {/* Ruler strip — screen-space, outside the transform so numbers stay readable at any zoom */}
@@ -378,13 +389,13 @@ export function CanvasView({
         <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 pointer-events-none">
           <div className="text-6xl mb-4">🧵</div>
           <p className="text-base font-medium text-slate-500">Upload your B&amp;W textile image to begin</p>
-          <p className="text-xs mt-2 text-slate-400">Works best with high-contrast images · JPG, PNG, WebP</p>
+          <p className="text-sm mt-2 text-slate-400">Works best with high-contrast images · JPG, PNG, WebP</p>
         </div>
       )}
 
       {/* Selected divider info bar */}
       {dividerLabel && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white border border-amber-300 rounded-lg px-3 py-1 text-xs text-amber-700 font-mono z-10 whitespace-nowrap shadow-sm">
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white border border-amber-300 rounded-lg px-3 py-1 text-sm text-amber-700 font-mono z-10 whitespace-nowrap shadow-sm">
           {dividerLabel}
         </div>
       )}
@@ -399,7 +410,7 @@ function RulerStrip({ dividers, bands, displayDims, scale, offset, isVertical })
   const sorted = [...dividers].sort((a, b) => a - b);
   const limit = isVertical ? displayDims.w : displayDims.h;
   const bounds = [0, ...sorted, limit];
-  const RULER_SIZE = 22;
+  const RULER_SIZE = 28;
 
   // Convert image coordinate to screen coordinate within the container
   const toScreen = (imageCoord) =>
@@ -422,7 +433,7 @@ function RulerStrip({ dividers, bands, displayDims, scale, offset, isVertical })
           const end = bounds[i + 1];
           const screenMid = toScreen((start + end) / 2);
           const screenBandSize = (end - start) * scale;
-          if (screenBandSize < 12) return null;
+          if (screenBandSize < 20) return null;
           const band = bands[i];
           const isPainted = !!(band?.color || band?.gradient);
           const color = band?.color?.hex ?? band?.gradient?.top?.hex ?? '#94a3b8';
@@ -430,9 +441,9 @@ function RulerStrip({ dividers, bands, displayDims, scale, offset, isVertical })
             <div
               key={i}
               className="absolute top-0 flex items-center justify-center"
-              style={{ left: screenMid - 10, width: 20, height: RULER_SIZE }}
+              style={{ left: screenMid - 14, width: 28, height: RULER_SIZE }}
             >
-              <span className="text-[9px] font-bold leading-none select-none"
+              <span className="text-sm font-bold leading-none select-none"
                 style={{ color: isPainted ? color : '#94a3b8' }}>
                 {i + 1}
               </span>
@@ -459,7 +470,7 @@ function RulerStrip({ dividers, bands, displayDims, scale, offset, isVertical })
         const end = bounds[i + 1];
         const screenMid = toScreen((start + end) / 2);
         const screenBandSize = (end - start) * scale;
-        if (screenBandSize < 12) return null;
+        if (screenBandSize < 20) return null;
         const band = bands[i];
         const isPainted = !!(band?.color || band?.gradient);
         const color = band?.color?.hex ?? band?.gradient?.top?.hex ?? '#94a3b8';
@@ -467,9 +478,9 @@ function RulerStrip({ dividers, bands, displayDims, scale, offset, isVertical })
           <div
             key={i}
             className="absolute left-0 flex items-center justify-center"
-            style={{ top: screenMid - 10, height: 20, width: RULER_SIZE }}
+            style={{ top: screenMid - 11, height: 22, width: RULER_SIZE }}
           >
-            <span className="text-[9px] font-bold leading-none select-none"
+            <span className="text-sm font-bold leading-none select-none"
               style={{ color: isPainted ? color : '#94a3b8' }}>
               {i + 1}
             </span>
@@ -485,7 +496,7 @@ function ViewBtn({ children, onClick, title }) {
     <button
       onClick={onClick}
       title={title}
-      className="min-w-7 h-7 px-1 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-slate-800 hover:border-slate-400 text-sm font-bold transition-colors shadow-sm"
+      className="min-w-7 h-7 px-1 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-slate-800 hover:border-slate-400 text-base font-bold transition-colors shadow-sm"
     >
       {children}
     </button>

@@ -15,7 +15,10 @@ const PANEL_TABS = ['Bands', 'Colors', 'Export'];
 export default function App() {
   const engine = useBandEngine();
   const { state, originalImageDataRef, displayImageDataRef, loadImage } = engine;
-  const { getOffscreenCanvas, buildFullResExport } = useColorizer(displayImageDataRef, state);
+  const [replaceAllNonBlack, setReplaceAllNonBlack] = useState(true);
+  const [repeatTemplate, setRepeatTemplate] = useState(null);
+
+  const { getOffscreenCanvas, buildFullResExport } = useColorizer(displayImageDataRef, state, replaceAllNonBlack);
 
   const [activeTab, setActiveTab] = useState('Bands');
   const [gradientMode, setGradientMode] = useState(false);
@@ -37,6 +40,32 @@ export default function App() {
     engine.setDividerAxis(axis);
     showToast(`Switched to ${axis} bands — dividers cleared`, 'info');
   }, [engine, state.dividerAxis, showToast]);
+
+  const handleRepeatPattern = useCallback(() => {
+    if (state.tool === 'repeatPlace') {
+      engine.setTool('paint');
+      setRepeatTemplate(null);
+      return;
+    }
+    const sorted = [...state.dividers].sort((a, b) => a - b);
+    if (sorted.length === 0) return;
+    setRepeatTemplate({
+      templateDividers: sorted,
+      templateBands: state.bands.slice(0, sorted.length),
+    });
+    engine.setTool('repeatPlace');
+    showToast('Click the image to stamp a copy · Esc to cancel', 'info');
+  }, [engine, state.tool, state.dividers, state.bands, showToast]);
+
+  const handleStampPattern = useCallback((coord) => {
+    if (!repeatTemplate) return;
+    engine.stampPattern(coord, repeatTemplate.templateDividers, repeatTemplate.templateBands);
+  }, [engine, repeatTemplate]);
+
+  const handleCancelRepeatPlace = useCallback(() => {
+    engine.setTool('paint');
+    setRepeatTemplate(null);
+  }, [engine]);
 
   // Export helpers
   const getExportCanvas = useCallback(() => {
@@ -134,13 +163,13 @@ export default function App() {
             🧵
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight text-slate-900 leading-tight">Textile Band Colorizer</h1>
-            <p className="text-[10px] text-slate-400 leading-tight">{axisLabel} · white fills only · black stays black</p>
+            <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">Textile Band Colorizer</h1>
+            <p className="text-sm text-slate-400 leading-tight">{axisLabel} · {replaceAllNonBlack ? 'all non-black replaced' : 'white fills only'} · black stays black</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {hasImage && (
-            <div className="flex gap-3 text-xs text-slate-500 border border-slate-200 rounded-lg px-3 py-1.5 bg-white shadow-sm">
+            <div className="flex gap-3 text-sm text-slate-500 border border-slate-200 rounded-lg px-3 py-1.5 bg-white shadow-sm">
               <span><span className="text-slate-900 font-semibold">{state.bands.length}</span> bands</span>
               <span className="text-slate-300">·</span>
               <span><span className="text-slate-900 font-semibold">{state.bands.filter(b => b.color || b.gradient).length}</span> painted</span>
@@ -151,7 +180,7 @@ export default function App() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 font-medium hover:border-blue-400 hover:text-blue-700 transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
+            className="flex items-center gap-2 px-4 py-1.5 rounded-lg border border-slate-200 bg-white text-base text-slate-700 font-medium hover:border-blue-400 hover:text-blue-700 transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
           >
             {loading ? '⏳ Loading…' : '📂 Upload Image'}
           </button>
@@ -179,6 +208,10 @@ export default function App() {
           onLoadProject={handleLoadProject}
           dividerAxis={state.dividerAxis}
           onSetDividerAxis={handleSetDividerAxis}
+          onRepeatPattern={handleRepeatPattern}
+          canRepeat={state.dividers.length > 0 && state.bands.some(b => b.color || b.gradient)}
+          replaceAllNonBlack={replaceAllNonBlack}
+          onToggleReplaceAllNonBlack={setReplaceAllNonBlack}
         />
       </div>
 
@@ -200,18 +233,20 @@ export default function App() {
             getBandAtY={engine.getBandAtY}
             onHoverBand={setHoveredBandId}
             highlightBandId={hoveredBandId}
+            onStampPattern={handleStampPattern}
+            onCancelRepeatPlace={handleCancelRepeatPlace}
           />
         </div>
 
         {/* Right panel */}
-        <div className="w-64 flex-shrink-0 flex flex-col border-l border-slate-200 bg-white overflow-hidden">
+        <div className="w-72 flex-shrink-0 flex flex-col border-l border-slate-200 bg-white overflow-hidden">
           {/* Tabs */}
           <div className="flex border-b border-slate-200 flex-shrink-0">
             {PANEL_TABS.map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className="flex-1 py-2.5 text-xs font-medium transition-colors"
+                className="flex-1 py-2.5 text-base font-medium transition-colors"
                 style={{
                   color: activeTab === tab ? '#1d4ed8' : '#94a3b8',
                   borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent',

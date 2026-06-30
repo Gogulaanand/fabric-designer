@@ -12,6 +12,13 @@ function sanitizeColor(c) {
   return { hex, rgb: Array.isArray(c.rgb) && c.rgb.length === 3 ? c.rgb.map(Number) : [0, 0, 0], name: String(c.name ?? '') };
 }
 
+function sanitizeDims(d) {
+  if (!d || typeof d !== 'object') return null;
+  const w = Number(d.w), h = Number(d.h);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0 || w > 20000 || h > 20000) return null;
+  return { w: Math.round(w), h: Math.round(h) };
+}
+
 function sanitizeBand(b) {
   if (!b || typeof b !== 'object') return null;
   const id = typeof b.id === 'string' && b.id.length > 0 ? b.id : crypto.randomUUID();
@@ -70,7 +77,7 @@ export function deserializeProject(json) {
     ? data.swatches.map(sanitizeColor).filter(Boolean)
     : [];
 
-  return { dividers, bands, swatches, displayDims: data.displayDims, originalDims: data.originalDims, displayScale: data.displayScale };
+  return { dividers, bands, swatches, displayDims: sanitizeDims(data.displayDims), originalDims: sanitizeDims(data.originalDims), displayScale: data.displayScale };
 }
 
 export function downloadJSON(filename, content) {

@@ -40,8 +40,16 @@ export function loadImageFromFile(file) {
 }
 
 const THRESH = 130;
+const BLACK_THRESH = 60;
 
-export function buildColorizedSync(srcData, dims, sortedDivs, bands, axis = 'horizontal') {
+function shouldReplacePx(data, i, replaceAllNonBlack) {
+  const r = data[i], g = data[i + 1], b = data[i + 2];
+  if (Math.max(r, g, b) < BLACK_THRESH) return false;
+  if (replaceAllNonBlack) return true;
+  return r > THRESH && g > THRESH && b > THRESH;
+}
+
+export function buildColorizedSync(srcData, dims, sortedDivs, bands, axis = 'horizontal', replaceAllNonBlack = true) {
   const out = new ImageData(new Uint8ClampedArray(srcData.data), dims.w, dims.h);
 
   if (axis === 'vertical') {
@@ -73,11 +81,7 @@ export function buildColorizedSync(srcData, dims, sortedDivs, bands, axis = 'hor
 
       for (let y = 0; y < dims.h; y++) {
         const i = (y * dims.w + x) * 4;
-        if (
-          srcData.data[i]     > THRESH &&
-          srcData.data[i + 1] > THRESH &&
-          srcData.data[i + 2] > THRESH
-        ) {
+        if (shouldReplacePx(srcData.data, i, replaceAllNonBlack)) {
           out.data[i]     = col[0];
           out.data[i + 1] = col[1];
           out.data[i + 2] = col[2];
@@ -114,11 +118,7 @@ export function buildColorizedSync(srcData, dims, sortedDivs, bands, axis = 'hor
 
       for (let x = 0; x < dims.w; x++) {
         const i = (y * dims.w + x) * 4;
-        if (
-          srcData.data[i]     > THRESH &&
-          srcData.data[i + 1] > THRESH &&
-          srcData.data[i + 2] > THRESH
-        ) {
+        if (shouldReplacePx(srcData.data, i, replaceAllNonBlack)) {
           out.data[i]     = col[0];
           out.data[i + 1] = col[1];
           out.data[i + 2] = col[2];

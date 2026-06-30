@@ -16,7 +16,7 @@ export function BandSidebar({
 
   return (
     <aside className="flex flex-col gap-1">
-      <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider px-1 mb-2 flex items-center justify-between">
+      <div className="text-sm text-slate-400 font-semibold uppercase tracking-wider px-1 mb-2 flex items-center justify-between">
         <span>Bands</span>
         <span className="font-normal text-slate-400">{bands.length}</span>
       </div>
@@ -87,11 +87,11 @@ function BandRow({ band, range, index, selected, hovered, onSelect, onRename, on
               onBlur={commitRename}
               onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditing(false); }}
               onClick={e => e.stopPropagation()}
-              className="w-full bg-white text-slate-900 text-xs px-1 rounded outline-none border border-blue-400"
+              className="w-full bg-white text-slate-900 text-sm px-1 rounded outline-none border border-blue-400"
             />
           ) : (
             <span
-              className="text-xs font-medium truncate block"
+              className="text-sm font-medium truncate block"
               style={{ color: band.locked ? '#94a3b8' : '#1e293b' }}
               onDoubleClick={e => { e.stopPropagation(); setEditing(true); setDraftName(band.name); }}
               title="Double-click to rename"
@@ -99,7 +99,7 @@ function BandRow({ band, range, index, selected, hovered, onSelect, onRename, on
               {band.name}
             </span>
           )}
-          <span className="text-[10px] text-slate-400 block font-mono">{range}</span>
+          <span className="text-sm text-slate-400 block font-mono">{range}</span>
         </div>
 
         {/* Actions */}
@@ -126,7 +126,7 @@ function IconBtn({ children, onClick, disabled, active, title }) {
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="w-5 h-5 text-[10px] flex items-center justify-center rounded transition-colors"
+      className="w-6 h-6 text-sm flex items-center justify-center rounded transition-colors"
       style={{
         color: disabled ? '#cbd5e1' : active ? '#2563eb' : '#94a3b8',
         background: active ? '#dbeafe' : 'transparent',

@@ -43,6 +43,9 @@ export function useBandEngine() {
 
   const toggleOriginal = useCallback(() => dispatch({ type: 'TOGGLE_ORIGINAL' }), []);
   const reset = useCallback(() => dispatch({ type: 'RESET' }), []);
+  const repeatPattern = useCallback(() => dispatch({ type: 'REPEAT_PATTERN' }), []);
+  const stampPattern = useCallback((startCoord, templateDividers, templateBands) =>
+    dispatch({ type: 'STAMP_PATTERN', startCoord, templateDividers, templateBands }), []);
 
   const setDividerAxis = useCallback((axis) => dispatch({ type: 'SET_DIVIDER_AXIS', axis }), []);
 
@@ -142,5 +145,7 @@ export function useBandEngine() {
     loadProject,
     getSerializableState,
     setDividerAxis,
+    repeatPattern,
+    stampPattern,
   };
 }

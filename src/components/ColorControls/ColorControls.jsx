@@ -55,7 +55,7 @@ export function ColorControls({ activeColor, swatches, onColorChange, onAddSwatc
                 onChange={e => setHex(e.target.value)}
                 onBlur={e => applyHex(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && applyHex(hex)}
-                className="w-full bg-white border border-slate-200 text-slate-900 text-xs px-2 py-1.5 rounded-lg font-mono outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm px-2 py-1.5 rounded-lg font-mono outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
                 placeholder="#RRGGBB"
               />
             </div>
@@ -75,7 +75,7 @@ export function ColorControls({ activeColor, swatches, onColorChange, onAddSwatc
           <div className="flex flex-col gap-2">
             {[['H', 0, 360, hsl[0]], ['S', 1, 100, hsl[1]], ['L', 2, 100, hsl[2]]].map(([label, idx, max, val]) => (
               <div key={label} className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-400 w-3 font-semibold">{label}</span>
+                <span className="text-sm text-slate-400 w-4 font-semibold">{label}</span>
                 <input
                   type="range" min={0} max={max} value={val}
                   onChange={e => {
@@ -89,7 +89,7 @@ export function ColorControls({ activeColor, swatches, onColorChange, onAddSwatc
                     background: 'linear-gradient(to right, #f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)'
                   } : undefined}
                 />
-                <span className="text-[10px] text-slate-400 w-7 text-right font-mono">{val}</span>
+                <span className="text-sm text-slate-400 w-8 text-right font-mono">{val}</span>
               </div>
             ))}
           </div>
@@ -98,7 +98,7 @@ export function ColorControls({ activeColor, swatches, onColorChange, onAddSwatc
           {typeof EyeDropper !== 'undefined' && (
             <button
               onClick={onEyedropper}
-              className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-500 hover:text-slate-800 hover:border-slate-400 transition-colors w-full bg-white"
+              className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border border-slate-200 text-base text-slate-500 hover:text-slate-800 hover:border-slate-400 transition-colors w-full bg-white"
             >
               💧 Eyedropper
             </button>
@@ -107,7 +107,7 @@ export function ColorControls({ activeColor, swatches, onColorChange, onAddSwatc
           {/* Add to swatches */}
           <button
             onClick={() => onAddSwatch(activeColor)}
-            className="text-xs text-slate-400 hover:text-blue-600 transition-colors text-left"
+            className="text-base text-slate-400 hover:text-blue-600 transition-colors text-left"
           >
             + Save as swatch
           </button>
@@ -116,18 +116,18 @@ export function ColorControls({ activeColor, swatches, onColorChange, onAddSwatc
         /* Gradient controls */
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 w-12">{dividerAxis === 'vertical' ? 'Left' : 'Top'}</span>
+            <span className="text-sm text-slate-500 w-14">{dividerAxis === 'vertical' ? 'Left' : 'Top'}</span>
             <input type="color" value={gradTop} onChange={e => setGradTop(e.target.value)}
               className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200 bg-white p-0.5" />
             <input type="text" value={gradTop} onChange={e => setGradTop(e.target.value)}
-              className="flex-1 bg-white border border-slate-200 text-slate-900 text-xs px-2 py-1 rounded-lg font-mono outline-none focus:border-blue-400" />
+              className="flex-1 bg-white border border-slate-200 text-slate-900 text-sm px-2 py-1 rounded-lg font-mono outline-none focus:border-blue-400" />
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 w-12">{dividerAxis === 'vertical' ? 'Right' : 'Bottom'}</span>
+            <span className="text-sm text-slate-500 w-14">{dividerAxis === 'vertical' ? 'Right' : 'Bottom'}</span>
             <input type="color" value={gradBottom} onChange={e => setGradBottom(e.target.value)}
               className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200 bg-white p-0.5" />
             <input type="text" value={gradBottom} onChange={e => setGradBottom(e.target.value)}
-              className="flex-1 bg-white border border-slate-200 text-slate-900 text-xs px-2 py-1 rounded-lg font-mono outline-none focus:border-blue-400" />
+              className="flex-1 bg-white border border-slate-200 text-slate-900 text-sm px-2 py-1 rounded-lg font-mono outline-none focus:border-blue-400" />
           </div>
           <div
             className="h-14 rounded-lg border border-slate-200 shadow-sm"
@@ -136,7 +136,7 @@ export function ColorControls({ activeColor, swatches, onColorChange, onAddSwatc
           <button
             onClick={applyGradient}
             disabled={!selectedBand}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-2 rounded-lg text-base font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Apply Gradient to Band
           </button>
@@ -145,7 +145,7 @@ export function ColorControls({ activeColor, swatches, onColorChange, onAddSwatc
 
       {/* Swatches */}
       <div>
-        <div className="text-[10px] text-slate-400 mb-2 uppercase tracking-wider font-semibold">Swatches</div>
+        <div className="text-sm text-slate-400 mb-2 uppercase tracking-wider font-semibold">Swatches</div>
         <div className="flex flex-wrap gap-1.5">
           {swatches.map((swatch, i) => (
             <div key={i} title={swatch.name || swatch.hex} className="relative group">
@@ -163,7 +163,7 @@ export function ColorControls({ activeColor, swatches, onColorChange, onAddSwatc
               />
               <button
                 onClick={() => onRemoveSwatch(i)}
-                className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 text-white text-[8px] rounded-full hidden group-hover:flex items-center justify-center shadow"
+                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-sm rounded-full hidden group-hover:flex items-center justify-center shadow"
               >
                 ×
               </button>
@@ -179,7 +179,7 @@ function ModeBtn({ children, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="flex-1 px-2 py-1 text-xs rounded-md font-medium transition-all"
+      className="flex-1 px-2 py-1.5 text-base rounded-md font-medium transition-all"
       style={{
         background: active ? '#fff' : 'transparent',
         color: active ? '#1d4ed8' : '#64748b',
