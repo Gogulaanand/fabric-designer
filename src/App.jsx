@@ -7,7 +7,7 @@ import { CanvasView } from './components/Canvas/CanvasView.jsx';
 import { BandSidebar } from './components/BandSidebar/BandSidebar.jsx';
 import { ColorControls } from './components/ColorControls/ColorControls.jsx';
 import { ExportDialog } from './components/ExportDialog/ExportDialog.jsx';
-import { serializeProject, deserializeProject, downloadJSON, openJSONFile } from './utils/projectFile.js';
+import { deserializeProject, openJSONFile } from './utils/projectFile.js';
 import { makeColor } from './utils/colorUtils.js';
 
 const PANEL_TABS = ['Bands', 'Colors', 'Export'];
@@ -16,6 +16,7 @@ export default function App() {
   const engine = useBandEngine();
   const { state, originalImageDataRef, displayImageDataRef, loadImage } = engine;
   const [replaceAllNonBlack, setReplaceAllNonBlack] = useState(true);
+  const [repeatFirstBandIdx, setRepeatFirstBandIdx] = useState(null);
   const [repeatTemplate, setRepeatTemplate] = useState(null);
 
   const { getOffscreenCanvas, buildFullResExport } = useColorizer(displayImageDataRef, state, replaceAllNonBlack);
@@ -42,28 +43,58 @@ export default function App() {
   }, [engine, state.dividerAxis, showToast]);
 
   const handleRepeatPattern = useCallback(() => {
-    if (state.tool === 'repeatPlace') {
+    if (state.tool === 'repeatSelect' || state.tool === 'repeatPlace') {
       engine.setTool('paint');
+      setRepeatFirstBandIdx(null);
       setRepeatTemplate(null);
       return;
     }
+    if (state.dividers.length === 0) return;
+    engine.setTool('repeatSelect');
+    showToast('Click the first band of the pattern', 'info');
+  }, [engine, state.tool, state.dividers.length, showToast]);
+
+  const handleRepeatSelectClick = useCallback((coord) => {
+    if (!state.displayDims) return;
     const sorted = [...state.dividers].sort((a, b) => a - b);
-    if (sorted.length === 0) return;
-    setRepeatTemplate({
-      templateDividers: sorted,
-      templateBands: state.bands.slice(0, sorted.length),
-    });
-    engine.setTool('repeatPlace');
-    showToast('Click the image to stamp a copy · Esc to cancel', 'info');
-  }, [engine, state.tool, state.dividers, state.bands, showToast]);
+    const limit = state.dividerAxis === 'vertical' ? state.displayDims.w : state.displayDims.h;
+
+    let bandIdx = state.bands.length - 1;
+    for (let i = 0; i < sorted.length; i++) {
+      if (coord < sorted[i]) { bandIdx = i; break; }
+    }
+
+    if (repeatFirstBandIdx === null) {
+      setRepeatFirstBandIdx(bandIdx);
+      showToast('Click the last band of the pattern · Esc to cancel', 'info');
+    } else {
+      const lo = Math.min(repeatFirstBandIdx, bandIdx);
+      const hi = Math.max(repeatFirstBandIdx, bandIdx);
+      const patternStart = lo === 0 ? 0 : sorted[lo - 1];
+      const patternEnd = hi < sorted.length ? sorted[hi] : limit;
+      const period = patternEnd - patternStart;
+      if (period <= 0) return;
+
+      const templateDividers = sorted
+        .filter(d => d > patternStart && d < patternEnd)
+        .map(d => d - patternStart);
+      const templateBands = state.bands.slice(lo, hi + 1);
+
+      setRepeatTemplate({ period, templateDividers, templateBands, patternStartBandIdx: lo, patternEndBandIdx: hi });
+      setRepeatFirstBandIdx(null);
+      engine.setTool('repeatPlace');
+      showToast('Click to stamp · multiple placements allowed · Esc to cancel', 'info');
+    }
+  }, [engine, state.dividers, state.bands, state.dividerAxis, state.displayDims, repeatFirstBandIdx, showToast]);
 
   const handleStampPattern = useCallback((coord) => {
     if (!repeatTemplate) return;
-    engine.stampPattern(coord, repeatTemplate.templateDividers, repeatTemplate.templateBands);
+    engine.stampPattern(coord, repeatTemplate.period, repeatTemplate.templateDividers, repeatTemplate.templateBands);
   }, [engine, repeatTemplate]);
 
   const handleCancelRepeatPlace = useCallback(() => {
     engine.setTool('paint');
+    setRepeatFirstBandIdx(null);
     setRepeatTemplate(null);
   }, [engine]);
 
@@ -110,14 +141,7 @@ export default function App() {
     }
   }, [getExportCanvas, showToast]);
 
-  // Project save / load
-  const handleSaveProject = useCallback(() => {
-    if (!hasImage) return;
-    const json = serializeProject(engine.getSerializableState());
-    downloadJSON('textile-project.json', json);
-    showToast('Project saved!', 'success');
-  }, [engine, hasImage, showToast]);
-
+  // Project load (JSON save removed from UI for now — functionality being reworked)
   const handleLoadProject = useCallback(async () => {
     try {
       const text = await openJSONFile();
@@ -147,6 +171,15 @@ export default function App() {
     if (!bandId) { showToast('Select a band first', 'info'); return; }
     engine.setGradient(bandId, gradient);
   }, [state.selectedBandId, engine, showToast]);
+
+  const repeatHighlightRange =
+    state.tool === 'repeatSelect' && repeatFirstBandIdx !== null
+      ? { startBandIdx: repeatFirstBandIdx, endBandIdx: repeatFirstBandIdx }
+      : state.tool === 'repeatPlace' && repeatTemplate
+      ? { startBandIdx: repeatTemplate.patternStartBandIdx, endBandIdx: repeatTemplate.patternEndBandIdx }
+      : null;
+
+  const repeatPeriod = state.tool === 'repeatPlace' ? (repeatTemplate?.period ?? null) : null;
 
   const axisLabel = state.dividerAxis === 'vertical' ? 'Vertical band coloring' : 'Horizontal band coloring';
 
@@ -204,12 +237,13 @@ export default function App() {
           onAutoDetect={engine.autoDetect}
           onToggleOriginal={engine.toggleOriginal}
           showOriginal={state.showOriginal}
-          onSaveProject={handleSaveProject}
+          onDownloadPng={handleExportPng}
           onLoadProject={handleLoadProject}
           dividerAxis={state.dividerAxis}
           onSetDividerAxis={handleSetDividerAxis}
           onRepeatPattern={handleRepeatPattern}
           canRepeat={state.dividers.length > 0 && state.bands.some(b => b.color || b.gradient)}
+          repeatFirstSelected={repeatFirstBandIdx !== null}
           replaceAllNonBlack={replaceAllNonBlack}
           onToggleReplaceAllNonBlack={setReplaceAllNonBlack}
         />
@@ -233,8 +267,11 @@ export default function App() {
             getBandAtY={engine.getBandAtY}
             onHoverBand={setHoveredBandId}
             highlightBandId={hoveredBandId}
+            onRepeatSelectClick={handleRepeatSelectClick}
             onStampPattern={handleStampPattern}
             onCancelRepeatPlace={handleCancelRepeatPlace}
+            repeatHighlightRange={repeatHighlightRange}
+            repeatPeriod={repeatPeriod}
           />
         </div>
 

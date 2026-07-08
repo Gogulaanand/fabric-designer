@@ -17,8 +17,11 @@ export function CanvasView({
   getBandAtY,
   onHoverBand,
   highlightBandId,
+  onRepeatSelectClick,
   onStampPattern,
   onCancelRepeatPlace,
+  repeatHighlightRange,
+  repeatPeriod,
 }) {
   const containerRef = useRef(null);
   const displayCanvasRef = useRef(null);
@@ -93,11 +96,32 @@ export function CanvasView({
       }
     }
 
-    // Hover guide line
-    if (hoverCoord !== null && (tool === 'addDiv' || tool === 'dragDiv' || tool === 'repeatPlace')) {
+    // Repeat pattern range highlight (green) — shown during repeatSelect and repeatPlace
+    if (repeatHighlightRange) {
+      const { startBandIdx, endBandIdx } = repeatHighlightRange;
+      const limit = isVertical ? displayDims.w : displayDims.h;
+      const rangeStart = startBandIdx === 0 ? 0 : sorted[startBandIdx - 1];
+      const rangeEnd = endBandIdx < sorted.length ? sorted[endBandIdx] : limit;
+      ctx.save();
+      ctx.fillStyle = 'rgba(5, 150, 105, 0.18)';
+      ctx.strokeStyle = 'rgba(5, 150, 105, 0.75)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      if (isVertical) {
+        ctx.fillRect(rangeStart, 0, rangeEnd - rangeStart, displayDims.h);
+        ctx.strokeRect(rangeStart + 1, 1, rangeEnd - rangeStart - 2, displayDims.h - 2);
+      } else {
+        ctx.fillRect(0, rangeStart, displayDims.w, rangeEnd - rangeStart);
+        ctx.strokeRect(1, rangeStart + 1, displayDims.w - 2, rangeEnd - rangeStart - 2);
+      }
+      ctx.restore();
+    }
+
+    // Hover guide line (addDiv, dragDiv, repeatSelect)
+    if (hoverCoord !== null && (tool === 'addDiv' || tool === 'dragDiv' || tool === 'repeatSelect')) {
       ctx.save();
       ctx.strokeStyle = tool === 'addDiv' ? 'rgba(0,200,255,0.55)' :
-        tool === 'repeatPlace' ? 'rgba(0,230,130,0.7)' : 'rgba(255,200,0,0.55)';
+        tool === 'repeatSelect' ? 'rgba(5,150,105,0.7)' : 'rgba(255,200,0,0.55)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
@@ -111,14 +135,33 @@ export function CanvasView({
       const labelText = isVertical ? `x = ${hoverCoord}` : `y = ${hoverCoord}`;
       if (isVertical) {
         ctx.fillRect(hoverCoord + 4, 4, 72, 18);
-        ctx.fillStyle = '#0cf';
+        ctx.fillStyle = tool === 'repeatSelect' ? '#0c9' : '#0cf';
         ctx.font = '14px monospace';
         ctx.fillText(labelText, hoverCoord + 6, 19);
       } else {
         ctx.fillRect(4, hoverCoord - 20, 72, 18);
-        ctx.fillStyle = '#0cf';
+        ctx.fillStyle = tool === 'repeatSelect' ? '#0c9' : '#0cf';
         ctx.font = '14px monospace';
         ctx.fillText(labelText, 6, hoverCoord - 5);
+      }
+      ctx.restore();
+    }
+
+    // Stamp footprint preview (repeatPlace)
+    if (hoverCoord !== null && tool === 'repeatPlace' && repeatPeriod) {
+      const footStart = hoverCoord;
+      const footEnd = hoverCoord + repeatPeriod;
+      ctx.save();
+      ctx.fillStyle = 'rgba(5, 150, 105, 0.18)';
+      ctx.strokeStyle = 'rgba(5, 150, 105, 0.85)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]);
+      if (isVertical) {
+        ctx.fillRect(footStart, 0, footEnd - footStart, displayDims.h);
+        ctx.strokeRect(footStart, 0, footEnd - footStart, displayDims.h);
+      } else {
+        ctx.fillRect(0, footStart, displayDims.w, footEnd - footStart);
+        ctx.strokeRect(0, footStart, displayDims.w, footEnd - footStart);
       }
       ctx.restore();
     }
@@ -173,7 +216,7 @@ export function CanvasView({
       }
       ctx.restore();
     }
-  }, [dividers, bands, displayDims, hoverCoord, tool, selectedDivIdx, showOriginal, isVertical, highlightBandId]);
+  }, [dividers, bands, displayDims, hoverCoord, tool, selectedDivIdx, showOriginal, isVertical, highlightBandId, repeatHighlightRange, repeatPeriod]);
 
   const getImageCoord = useCallback((e) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -239,10 +282,12 @@ export function CanvasView({
       onPaintBandByY(roundedCoord);
       const band = getBandAtY(roundedCoord);
       if (band) onSelectBand(band.id);
+    } else if (tool === 'repeatSelect') {
+      onRepeatSelectClick?.(roundedCoord);
     } else if (tool === 'repeatPlace') {
       onStampPattern?.(roundedCoord);
     }
-  }, [displayDims, getImageCoord, tool, scale, dividers, onAddDivider, onRemoveDivider, onPaintBandByY, onSelectBand, getBandAtY, getNearestDivider, startPan, onStampPattern]);
+  }, [displayDims, getImageCoord, tool, scale, dividers, onAddDivider, onRemoveDivider, onPaintBandByY, onSelectBand, getBandAtY, getNearestDivider, startPan, onRepeatSelectClick, onStampPattern]);
 
   const handleMouseUp = useCallback(() => {
     const lastAnchor = dragAnchorRef.current;
@@ -290,7 +335,7 @@ export function CanvasView({
     }
 
     if (e.key === 'Escape') {
-      if (tool === 'repeatPlace') onCancelRepeatPlace?.();
+      if (tool === 'repeatPlace' || tool === 'repeatSelect') onCancelRepeatPlace?.();
       setSelectedDivIdx(null);
       return;
     }
@@ -321,6 +366,7 @@ export function CanvasView({
       ? (isVertical ? 'ew-resize' : 'ns-resize')
       : (isVertical ? 'col-resize' : 'row-resize'),
     rmDiv: 'pointer',
+    repeatSelect: 'crosshair',
     repeatPlace: 'copy',
   };
 

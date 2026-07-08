@@ -6,20 +6,28 @@ const TOOLS = [
   { id: 'rmDiv',  label: 'Remove Line', icon: '✂',  color: '#dc2626', hint: 'Click near a divider line to remove it' },
 ];
 
-const HINT_OVERRIDES = {
-  repeatPlace: 'Click the image to stamp a copy of the pattern · Esc to cancel',
-};
+function getRepeatHint(tool, repeatFirstSelected) {
+  if (tool === 'repeatSelect') {
+    return repeatFirstSelected
+      ? 'Click the last band of the pattern · Esc to cancel'
+      : 'Click the first band of the pattern · Esc to cancel';
+  }
+  if (tool === 'repeatPlace') return 'Click to stamp · multiple placements allowed · Esc to cancel';
+  return null;
+}
 
 export function Toolbar({
   tool, setTool, hasImage,
   onReset, onAutoDetect, onToggleOriginal, showOriginal,
-  onSaveProject, onLoadProject,
+  onDownloadPng, onLoadProject,
   dividerAxis, onSetDividerAxis,
   onRepeatPattern, canRepeat,
+  repeatFirstSelected,
   replaceAllNonBlack, onToggleReplaceAllNonBlack,
 }) {
-  const hint = HINT_OVERRIDES[tool] ?? TOOLS.find(t => t.id === tool)?.hint ?? '';
-  const isRepeatPlaceMode = tool === 'repeatPlace';
+  const hint = getRepeatHint(tool, repeatFirstSelected) ?? TOOLS.find(t => t.id === tool)?.hint ?? '';
+  const isRepeatMode = tool === 'repeatSelect' || tool === 'repeatPlace';
+  const repeatLabel = tool === 'repeatSelect' ? 'Select Pattern' : tool === 'repeatPlace' ? 'Cancel Stamp' : 'Repeat Pattern';
 
   return (
     <div className="flex flex-col gap-2">
@@ -80,23 +88,23 @@ export function Toolbar({
 
         <div className="w-px h-6 bg-slate-200 mx-0.5" />
 
-        {/* Repeat Pattern — enter stamp-placement mode */}
+        {/* Repeat Pattern — two-click select then stamp */}
         <ToolBtn
-          disabled={!hasImage || (!canRepeat && !isRepeatPlaceMode)}
+          disabled={!hasImage || (!canRepeat && !isRepeatMode)}
           color="#059669"
           onClick={onRepeatPattern}
-          active={isRepeatPlaceMode}
-          title={isRepeatPlaceMode ? 'Click again or press Esc to cancel placement' : 'Click to enter stamp mode — then click the image to place a copy of the pattern'}
+          active={isRepeatMode}
+          title={isRepeatMode ? 'Click again or press Esc to cancel' : 'Select a band range, then stamp copies at any position'}
         >
           <span>🔁</span>
-          <span>{isRepeatPlaceMode ? 'Cancel Stamp' : 'Repeat Pattern'}</span>
+          <span>{repeatLabel}</span>
         </ToolBtn>
 
         <div className="w-px h-6 bg-slate-200 mx-0.5" />
 
-        <ToolBtn disabled={!hasImage} color="#64748b" onClick={onSaveProject}>
-          <span>💾</span>
-          <span>Save</span>
+        <ToolBtn disabled={!hasImage} color="#2563eb" onClick={onDownloadPng} title="Download the colored image as PNG (more formats in the Export tab)">
+          <span>⬇</span>
+          <span>Download PNG</span>
         </ToolBtn>
 
         <ToolBtn color="#64748b" onClick={onLoadProject}>

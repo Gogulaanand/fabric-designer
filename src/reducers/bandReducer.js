@@ -15,7 +15,7 @@ export const INITIAL_STATE = {
 
   // UI state
   selectedBandId: null,
-  tool: 'paint',  // 'addDiv' | 'paint' | 'dragDiv' | 'rmDiv' | 'repeatPlace'
+  tool: 'paint',  // 'addDiv' | 'paint' | 'dragDiv' | 'rmDiv' | 'repeatSelect' | 'repeatPlace'
   activeColor: DEFAULT_SWATCHES[0],
   swatches: DEFAULT_SWATCHES,
 
@@ -226,87 +226,59 @@ export function bandReducer(state, action) {
       return { ...state, showOriginal: !state.showOriginal };
     }
 
-    case 'REPEAT_PATTERN': {
-      const { dividers, bands, dividerAxis, displayDims } = state;
-      if (dividers.length === 0 || !displayDims) return state;
-
-      const sorted = [...dividers].sort((a, b) => a - b);
-      const period = sorted[sorted.length - 1];
-      if (period <= 0) return state;
-
-      const limit = dividerAxis === 'vertical' ? displayDims.w : displayDims.h;
-
-      // Template = bands in [0, period): bands[0..M-1] where M = sorted.length.
-      // Excludes the tail band that starts at period — it becomes band[0] of the next unit.
-      // Unpainted (white) bands are preserved in the cycle as null, keeping stripe geometry intact.
-      const templateBands = bands.slice(0, sorted.length);
-      const N = templateBands.length; // always >= 1 since sorted.length > 0
-      if (templateBands.every(b => !b.color && !b.gradient)) return state;
-
-      // Tile divider positions: offset by period * k until we exceed the image
-      const MAX_TILED_DIVIDERS = 10000;
-      const allDividers = [...sorted];
-      let k = 1;
-      let offset = period;
-      while (offset < limit && allDividers.length < MAX_TILED_DIVIDERS) {
-        for (const d of sorted) {
-          const newD = d + offset;
-          if (newD < limit) allDividers.push(newD);
-        }
-        k++;
-        offset = period * k;
-      }
-      allDividers.sort((a, b) => a - b);
-
-      // Build bands, cycling colors (including nulls) from template
-      const newBands = Array.from({ length: allDividers.length + 1 }, (_, i) => {
-        const template = templateBands[i % N];
-        return {
-          id: crypto.randomUUID(),
-          name: `Band ${i + 1}`,
-          color: template?.color ?? null,
-          gradient: template?.gradient ?? null,
-          locked: false,
-        };
-      });
-
-      return { ...state, dividers: allDividers, bands: newBands, selectedBandId: null };
-    }
-
     case 'STAMP_PATTERN': {
-      const { startCoord, templateDividers, templateBands } = action;
+      const { startCoord, period, templateDividers, templateBands } = action;
       const { dividers: curDividers, bands: curBands, dividerAxis, displayDims } = state;
 
-      if (!templateDividers || !templateDividers.length || !displayDims) return state;
-
+      if (!displayDims || !templateBands?.length || !period || period <= 0) return state;
       const limit = dividerAxis === 'vertical' ? displayDims.w : displayDims.h;
-      const period = templateDividers[templateDividers.length - 1];
-      if (period <= 0 || startCoord < 0 || startCoord >= limit) return state;
+      if (startCoord < 0 || startCoord >= limit) return state;
 
-      // New dividers: leading boundary at startCoord + each template divider shifted.
-      // startCoord itself is included so the first template band has a proper left boundary.
-      const newDividers = [startCoord, ...templateDividers.map(d => d + startCoord)]
-        .filter(d => d > 0 && d < limit);
+      const endCoord = startCoord + period; // may exceed limit; clip gracefully
 
-      if (newDividers.length === 0) return state;
+      // Dividers to insert: leading edge, internal relatives, trailing edge (all clipped)
+      const newDivs = [];
+      if (startCoord > 0) newDivs.push(startCoord);
+      for (const relD of templateDividers) {
+        const absD = startCoord + relD;
+        if (absD > 0 && absD < limit) newDivs.push(absD);
+      }
+      if (endCoord < limit) newDivs.push(endCoord);
 
-      // Merge with existing, skipping near-duplicates (within 2px)
+      // Merge with existing, skipping near-duplicates within 2px
       const sortedCur = [...curDividers].sort((a, b) => a - b);
       const mergedDividers = [...sortedCur];
-      for (const nd of newDividers) {
-        if (!mergedDividers.some(d => Math.abs(d - nd) < 2)) {
-          mergedDividers.push(nd);
-        }
+      for (const nd of newDivs) {
+        if (!mergedDividers.some(d => Math.abs(d - nd) < 2)) mergedDividers.push(nd);
       }
       mergedDividers.sort((a, b) => a - b);
 
-      // Build bands: stamp range gets template colors, rest preserves existing
+      // Precompute existing band boundaries for exact-match preservation
+      const existingBounds = curBands.map((_, i) => ({
+        start: i === 0 ? 0 : sortedCur[i - 1],
+        end: i < sortedCur.length ? sortedCur[i] : limit,
+      }));
+
+      const clampedEnd = Math.min(endCoord, limit);
+
       const newBands = Array.from({ length: mergedDividers.length + 1 }, (_, i) => {
         const bStart = i === 0 ? 0 : mergedDividers[i - 1];
         const bEnd = i < mergedDividers.length ? mergedDividers[i] : limit;
         const mid = (bStart + bEnd) / 2;
 
-        if (mid >= startCoord && mid < startCoord + period) {
+        // Find the pre-stamp band that covers this midpoint
+        let existBandIdx = curBands.length - 1;
+        for (let j = 0; j < sortedCur.length; j++) {
+          if (mid < sortedCur[j]) { existBandIdx = j; break; }
+        }
+        const existBand = curBands[existBandIdx];
+        const bounds = existingBounds[existBandIdx];
+        const isExactBand = bounds && Math.abs(bStart - bounds.start) < 2 && Math.abs(bEnd - bounds.end) < 2;
+
+        if (mid >= startCoord && mid < clampedEnd) {
+          // Inside stamp range: locked bands keep their existing color
+          if (existBand?.locked) return isExactBand ? existBand : { ...existBand, id: crypto.randomUUID() };
+          // Map relative midpoint to template band
           const relMid = mid - startCoord;
           let tplIdx = templateBands.length - 1;
           for (let j = 0; j < templateDividers.length; j++) {
@@ -322,19 +294,9 @@ export function bandReducer(state, action) {
           };
         }
 
-        // Preserve color from existing band covering this midpoint
-        let existBandIdx = curBands.length - 1;
-        for (let j = 0; j < sortedCur.length; j++) {
-          if (mid < sortedCur[j]) { existBandIdx = j; break; }
-        }
-        const existBand = curBands[existBandIdx] ?? null;
-        return {
-          id: crypto.randomUUID(),
-          name: `Band ${i + 1}`,
-          color: existBand?.color ?? null,
-          gradient: existBand?.gradient ?? null,
-          locked: false,
-        };
+        // Outside stamp range: preserve existing band object exactly, or copy with new id if split
+        if (!existBand) return { id: crypto.randomUUID(), name: `Band ${i + 1}`, color: null, gradient: null, locked: false };
+        return isExactBand ? existBand : { ...existBand, id: crypto.randomUUID() };
       });
 
       return { ...state, dividers: mergedDividers, bands: newBands, selectedBandId: null };
