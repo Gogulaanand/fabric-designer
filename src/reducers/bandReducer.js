@@ -230,7 +230,7 @@ export function bandReducer(state, action) {
       const { startCoord, period, templateDividers, templateBands } = action;
       const { dividers: curDividers, bands: curBands, dividerAxis, displayDims } = state;
 
-      if (!displayDims || !templateBands?.length || !period || period <= 0) return state;
+      if (!displayDims || !templateBands?.length || !templateDividers || !period || period <= 0) return state;
       const limit = dividerAxis === 'vertical' ? displayDims.w : displayDims.h;
       if (startCoord < 0 || startCoord >= limit) return state;
 
