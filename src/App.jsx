@@ -173,7 +173,7 @@ export default function App() {
     setRepeatFirstBandIdx(null);
     setRepeatTemplate(null);
     engine.setDividerAxis(axis);
-    showToast(`Switched to ${axis} bands — dividers cleared`, 'info');
+    showToast(`Switched to ${axis} bands - dividers and colors cleared`, 'info');
   }, [engine, state.dividerAxis, showToast]);
 
   const handleReset = useCallback(() => {
