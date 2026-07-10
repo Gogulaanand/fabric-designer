@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useBandEngine } from './hooks/useBandEngine.js';
 import { useColorizer } from './hooks/useColorizer.js';
 import { useImageLoader } from './hooks/useImageLoader.js';
@@ -25,10 +25,12 @@ export default function App() {
   const [gradientMode, setGradientMode] = useState(false);
   const [toast, setToast] = useState(null);
   const [hoveredBandId, setHoveredBandId] = useState(null);
+  const toastTimerRef = useRef(null);
 
   const showToast = useCallback((msg, type = 'info') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 2500);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
   }, []);
 
   const { handleInputChange, handleDrop, handleDragOver, loading, fileInputRef } = useImageLoader(
