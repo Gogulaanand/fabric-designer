@@ -7,14 +7,15 @@ import { CanvasView } from './components/Canvas/CanvasView.jsx';
 import { BandSidebar } from './components/BandSidebar/BandSidebar.jsx';
 import { ColorControls } from './components/ColorControls/ColorControls.jsx';
 import { ExportDialog } from './components/ExportDialog/ExportDialog.jsx';
-import { deserializeProject, openJSONFile } from './utils/projectFile.js';
+import { deserializeProject, serializeProject, downloadJSON, openJSONFile } from './utils/projectFile.js';
+import { loadImageFromDataURL } from './utils/imageUtils.js';
 import { makeColor } from './utils/colorUtils.js';
 
 const PANEL_TABS = ['Bands', 'Colors', 'Export'];
 
 export default function App() {
   const engine = useBandEngine();
-  const { state, originalImageDataRef, displayImageDataRef, loadImage } = engine;
+  const { state, originalImageDataRef, displayImageDataRef, imageDataURLRef, loadImage } = engine;
   const [replaceAllNonBlack, setReplaceAllNonBlack] = useState(true);
   const [repeatFirstBandIdx, setRepeatFirstBandIdx] = useState(null);
   const [repeatTemplate, setRepeatTemplate] = useState(null);
@@ -180,21 +181,49 @@ export default function App() {
     }
   }, [getExportCanvas, showToast]);
 
-  // Project load (JSON save removed from UI for now — functionality being reworked)
+  // Project save
+  const handleSaveProject = useCallback(() => {
+    const engineState = engine.getSerializableState();
+    const json = serializeProject(engineState, {
+      imageDataURL: imageDataURLRef.current,
+      replaceAllNonBlack,
+    });
+    downloadJSON('textile-project.json', json);
+    showToast('Project saved!', 'success');
+  }, [engine, imageDataURLRef, replaceAllNonBlack, showToast]);
+
+  // Project load (supports v1 files requiring pre-loaded image and v2 files with embedded image)
   const handleLoadProject = useCallback(async () => {
-    if (!hasImage) {
-      showToast('Load an image first, then load the project file', 'info');
-      return;
-    }
     try {
       const text = await openJSONFile();
       const data = deserializeProject(text);
+
+      // If the project file has an embedded image (v2), auto-load it
+      if (data.imageDataURL) {
+        try {
+          const imgResult = await loadImageFromDataURL(data.imageDataURL);
+          loadImage(imgResult);
+        } catch (imgErr) {
+          showToast(`Failed to load embedded image: ${imgErr.message}`, 'error');
+          return;
+        }
+      } else if (!hasImage) {
+        // v1 file with no embedded image and no image loaded
+        showToast('Load an image first, then load the project file', 'info');
+        return;
+      }
+
+      // Restore replaceAllNonBlack from the project if available
+      if (typeof data.replaceAllNonBlack === 'boolean') {
+        setReplaceAllNonBlack(data.replaceAllNonBlack);
+      }
+
       engine.loadProject(data);
       showToast('Project loaded!', 'success');
     } catch (err) {
       showToast(`Failed to load: ${err.message}`, 'error');
     }
-  }, [engine, showToast, hasImage]);
+  }, [engine, showToast, hasImage, loadImage]);
 
   // Eyedropper (Chromium-only)
   const handleEyedropper = useCallback(async () => {
@@ -282,6 +311,7 @@ export default function App() {
           showOriginal={state.showOriginal}
           onDownloadPng={handleExportPng}
           onLoadProject={handleLoadProject}
+          onSaveProject={handleSaveProject}
           dividerAxis={state.dividerAxis}
           onSetDividerAxis={handleSetDividerAxis}
           onRepeatPattern={handleRepeatPattern}

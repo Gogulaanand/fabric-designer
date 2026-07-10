@@ -20,10 +20,15 @@ export function useBandEngine() {
   // Image data refs (not in reducer - too large for state)
   const originalImageDataRef = useRef(null);
   const displayImageDataRef = useRef(null);
+  // Source image data URL for project serialization
+  const imageDataURLRef = useRef(null);
 
   const loadImage = useCallback((result) => {
     originalImageDataRef.current = result.originalImageData;
     displayImageDataRef.current = result.displayImageData;
+    if (result.imageDataURL) {
+      imageDataURLRef.current = result.imageDataURL;
+    }
     dispatch({
       type: 'LOAD_IMAGE',
       originalDims: result.originalDims,
@@ -127,6 +132,7 @@ export function useBandEngine() {
     state,
     originalImageDataRef,
     displayImageDataRef,
+    imageDataURLRef,
     // Undo / redo
     undo,
     redo,

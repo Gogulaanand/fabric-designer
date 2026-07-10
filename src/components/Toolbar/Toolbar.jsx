@@ -19,7 +19,7 @@ function getRepeatHint(tool, repeatFirstSelected) {
 export function Toolbar({
   tool, setTool, hasImage,
   onReset, onAutoDetect, onToggleOriginal, showOriginal,
-  onDownloadPng, onLoadProject,
+  onDownloadPng, onLoadProject, onSaveProject,
   dividerAxis, onSetDividerAxis,
   onRepeatPattern, canRepeat,
   repeatFirstSelected,
@@ -123,6 +123,11 @@ export function Toolbar({
         <ToolBtn color="#64748b" onClick={onLoadProject}>
           <span>📂</span>
           <span>Load</span>
+        </ToolBtn>
+
+        <ToolBtn disabled={!hasImage} color="#64748b" onClick={onSaveProject} title="Save project as JSON (includes image)">
+          <span>💾</span>
+          <span>Save</span>
         </ToolBtn>
       </div>
 

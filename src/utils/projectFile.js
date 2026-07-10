@@ -1,4 +1,4 @@
-const PROJECT_VERSION = 1;
+const PROJECT_VERSION = 2;
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 function validateHex(val) {
@@ -34,30 +34,50 @@ function sanitizeBand(b) {
   };
 }
 
-export function serializeProject(state) {
+/**
+ * Serialize the full project state to a JSON string.
+ * @param {object} engineState - The state from getSerializableState()
+ * @param {object} opts - Additional options
+ * @param {string|null} opts.imageDataURL - The source image as a data URL (or null)
+ * @param {boolean} opts.replaceAllNonBlack - Current replace-all-non-black toggle value
+ * @returns {string} JSON string
+ */
+export function serializeProject(engineState, opts = {}) {
   return JSON.stringify({
     version: PROJECT_VERSION,
     savedAt: new Date().toISOString(),
-    dividers: state.dividers,
-    bands: state.bands.map(b => ({
+    dividers: engineState.dividers,
+    bands: engineState.bands.map(b => ({
       id: b.id,
       name: b.name,
       color: b.color,
       gradient: b.gradient,
       locked: b.locked,
     })),
-    swatches: state.swatches,
-    displayDims: state.displayDims,
-    originalDims: state.originalDims,
-    displayScale: state.displayScale,
+    swatches: engineState.swatches,
+    displayDims: engineState.displayDims,
+    originalDims: engineState.originalDims,
+    displayScale: engineState.displayScale,
+    dividerAxis: engineState.dividerAxis ?? 'horizontal',
+    replaceAllNonBlack: opts.replaceAllNonBlack ?? true,
+    imageDataURL: opts.imageDataURL ?? null,
   }, null, 2);
 }
 
+/**
+ * Deserialize a project JSON string.
+ * Handles both version 1 (legacy - no image, no axis, no replaceAllNonBlack)
+ * and version 2 (full state with optional embedded image).
+ * @param {string} json
+ * @returns {object} Deserialized project data
+ */
 export function deserializeProject(json) {
   const data = JSON.parse(json);
   if (typeof data !== 'object' || data === null) throw new Error('Invalid project file');
-  if (data.version !== PROJECT_VERSION) {
-    throw new Error(`Unsupported project version: ${data.version}`);
+
+  const version = data.version;
+  if (version !== 1 && version !== 2) {
+    throw new Error(`Unsupported project version: ${version}`);
   }
 
   const dividers = Array.isArray(data.dividers)
@@ -77,7 +97,31 @@ export function deserializeProject(json) {
     ? data.swatches.map(sanitizeColor).filter(Boolean)
     : [];
 
-  return { dividers, bands, swatches, displayDims: sanitizeDims(data.displayDims), originalDims: sanitizeDims(data.originalDims), displayScale: data.displayScale };
+  const result = {
+    dividers,
+    bands,
+    swatches,
+    displayDims: sanitizeDims(data.displayDims),
+    originalDims: sanitizeDims(data.originalDims),
+    displayScale: data.displayScale,
+  };
+
+  // Version 2 fields (migrated from v1 with defaults)
+  result.dividerAxis = typeof data.dividerAxis === 'string'
+    && (data.dividerAxis === 'horizontal' || data.dividerAxis === 'vertical')
+    ? data.dividerAxis
+    : 'horizontal';
+
+  result.replaceAllNonBlack = typeof data.replaceAllNonBlack === 'boolean'
+    ? data.replaceAllNonBlack
+    : true;
+
+  // Embedded image (v2 only; v1 files will have null)
+  result.imageDataURL = typeof data.imageDataURL === 'string' && data.imageDataURL.length > 0
+    ? data.imageDataURL
+    : null;
+
+  return result;
 }
 
 export function downloadJSON(filename, content) {

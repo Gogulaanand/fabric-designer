@@ -31,11 +31,48 @@ export function loadImageFromFile(file) {
           displayImageData,
           displayDims: { w: dw, h: dh },
           displayScale: scale,
+          imageDataURL: e.target.result,
         });
       };
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Load an image from a data URL string (e.g. from a saved project file).
+ * Returns the same result shape as loadImageFromFile.
+ */
+export function loadImageFromDataURL(dataURL) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = () => reject(new Error('Could not decode embedded image.'));
+    img.onload = () => {
+      const origCanvas = document.createElement('canvas');
+      origCanvas.width = img.width;
+      origCanvas.height = img.height;
+      origCanvas.getContext('2d').drawImage(img, 0, 0);
+      const originalImageData = origCanvas.getContext('2d').getImageData(0, 0, img.width, img.height);
+
+      const scale = Math.min(1, MAX_DISPLAY_WIDTH / img.width);
+      const dw = Math.round(img.width * scale);
+      const dh = Math.round(img.height * scale);
+      const dispCanvas = document.createElement('canvas');
+      dispCanvas.width = dw;
+      dispCanvas.height = dh;
+      dispCanvas.getContext('2d').drawImage(img, 0, 0, dw, dh);
+      const displayImageData = dispCanvas.getContext('2d').getImageData(0, 0, dw, dh);
+
+      resolve({
+        originalImageData,
+        originalDims: { w: img.width, h: img.height },
+        displayImageData,
+        displayDims: { w: dw, h: dh },
+        displayScale: scale,
+      });
+    };
+    img.src = dataURL;
   });
 }
 
