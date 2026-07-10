@@ -1,0 +1,285 @@
+# Textile Band Colorizer - Improvement Plan
+
+Status: ACTIVE.
+Baseline: commit `a0c8192` (2026-07-10).
+Owner: Gogulaanand R.
+This document is the single source of truth for the improvement effort.
+Any agent working on this project must read this file fully before making changes, and must update the status tables and decision log when finishing a work item.
+
+---
+
+## 1. Project context
+
+The app is a client-only React SPA that colorizes black-and-white handwoven textile images using band logic.
+The user uploads an image, places horizontal or vertical divider lines to define bands, and paints each band with a solid color or a two-stop gradient.
+Black pixels are always preserved; non-black (or white-only, depending on a toggle) pixels are replaced with the band color.
+Exports are rendered at the original image resolution.
+
+- Stack: React 19, Vite 8, Tailwind v4, Vitest, oxlint. Plain JavaScript, no TypeScript.
+- Deploy: Vercel (SPA rewrite + strict CSP in `vercel.json`).
+- Commands: `npm run dev`, `npm test`, `npm run lint`, `npm run build`.
+- All state is in-memory. There is no backend and no persistence yet.
+
+### Architecture map
+
+| Area | File | Role |
+|---|---|---|
+| State | `src/reducers/bandReducer.js` | All band/divider/tool/swatch state transitions. Pure, tested. |
+| Engine | `src/hooks/useBandEngine.js` | Wraps the reducer, holds full-res and display ImageData in refs, exposes action callbacks. |
+| Colorize | `src/utils/imageUtils.js` | `buildColorizedSync` (per-pixel recolor), `autoDetectDividers`, image loading/downscale (display capped at 1000px wide). |
+| Render cache | `src/hooks/useColorizer.js` | Offscreen canvas + dirty flag; dirty is set synchronously during render (deliberate, see comment in file). |
+| Canvas | `src/components/Canvas/CanvasView.jsx` | Two stacked canvases (image + overlay), zoom/pan transform, mouse/keyboard interaction, screen-space ruler. |
+| Zoom/pan | `src/hooks/useZoomPan.js` | Scale/offset state, screen-to-image coordinate mapping. |
+| Shell | `src/App.jsx` | Composition, toasts, export handlers, repeat-pattern orchestration, tab panel. |
+| Panels | `src/components/{Toolbar,BandSidebar,ColorControls,ExportDialog}/` | Presentation components. |
+| Project files | `src/utils/projectFile.js` | JSON serialize/deserialize with sanitization. Save is currently not wired to the UI; Load is. |
+
+Key invariants:
+
+- `bands.length === dividers.length + 1` always.
+- Dividers are kept sorted by every reducer path except `LOAD_PROJECT` (see A3).
+- A band has either `color` or `gradient`, never both (reducer enforces).
+- Divider positions are stored in display-image coordinates and scaled by `1 / displayScale` at export time.
+
+---
+
+## 2. Hard constraints (apply to every work item)
+
+1. Never remove an existing feature.
+   Features may only be improved or extended.
+   The feature inventory in section 3 defines what must keep working.
+2. Keep `npm test`, `npm run lint`, and `npm run build` green after every work item.
+3. Keep the light visual theme and the existing interaction vocabulary (tools, hints, ruler, toasts).
+4. Do not use the em dash character anywhere; use a plain dash.
+5. Do not add agent names as commit co-authors.
+6. Follow existing commit style: conventional prefixes (`fix:`, `feat:`, `chore:`, `refactor:`, `test:`, `docs:`).
+7. Bug fixes must first be reproduced end-to-end (run the app, reproduce as a user would) before the fix is written, whenever the bug has a runtime surface.
+8. Line references in this doc are relative to baseline `a0c8192` and may drift; verify before editing.
+
+## 3. Feature inventory (must never regress)
+
+- Image upload via button and drag-and-drop; display downscale with full-res export.
+- Horizontal and vertical band axes with axis switch.
+- Tools: Add Line, Paint, Drag Line, Remove Line.
+- Divider nudging with arrow keys (Shift = x10), divider info bar.
+- Auto Detect dividers.
+- Solid color painting, two-stop gradients, HSL sliders, hex input, native picker, EyeDropper (Chromium).
+- Swatches: defaults, add, remove.
+- Band sidebar: select, rename (double-click), lock, clear, copy/paste color, hover sync with canvas.
+- Repeat pattern: two-click band-range select, then stamp at any position, multiple stamps, Esc cancel, locked bands preserved.
+- Replace-all-non-black toggle (vs white-only fill).
+- Original/colorized toggle, zoom/pan (wheel, buttons, fit, 1:1, space/alt/middle-drag pan), screen-space ruler with band numbers.
+- Export: PNG, JPG with quality slider, copy to clipboard; all at full resolution.
+- Project Load from JSON (Save is a known gap, see B4; restoring Save is in scope, removing Load is not).
+
+---
+
+## 4. Findings register
+
+Severity: H = user-visible data loss or broken flow, M = user-visible annoyance, L = polish/internal.
+
+### Bugs (B)
+
+| ID | Sev | Finding | Where |
+|---|---|---|---|
+| B1 | H | Re-uploading the same file does nothing: `App.jsx` owns the file input (line ~220) but never clears `.value`; the clearing code in `useImageLoader.js:24` targets the hook's own ref which is attached to nothing. | `src/App.jsx`, `src/hooks/useImageLoader.js` |
+| B2 | M | Image load errors are silent: `useImageLoader` captures `error` but App never displays it. | `src/App.jsx:35` |
+| B3 | H | Loading a project JSON with no image loaded shows a broken view: `LOAD_PROJECT` sets `displayDims` so the UI thinks an image exists, but the canvas is blank. | `src/App.jsx:145`, `bandReducer.js:305` |
+| B4 | H | Save Project is missing while Load exists; `serializeProject`/`downloadJSON` are dead code. Round-trip is broken. | `src/utils/projectFile.js`, `src/App.jsx:144` |
+| B5 | M | Moving/nudging a divider past a neighbor re-sorts dividers but not bands, so colors jump between stripes; drag also re-resolves the dragged divider by nearest-to-anchor and can grab the wrong one when dividers are close. | `bandReducer.js:105-129`, `CanvasView.jsx:236` |
+| B6 | M | Repeat-pattern mode survives axis switch and Reset: `tool` is preserved by `SET_DIVIDER_AXIS`/`RESET`, and App-side `repeatTemplate`/`repeatFirstBandIdx` also survive, allowing cross-axis or stale stamps. | `bandReducer.js:56-65,318-326`, `src/App.jsx` |
+| B7 | M | ColorControls desyncs: hex field does not follow external activeColor changes (eyedropper); HSL sliders do not follow hex edits; gradient hex text inputs are unvalidated and an invalid hex paints the band black via NaN rgb. | `src/components/ColorControls/ColorControls.jsx` |
+| B8 | L | Toast timer race: `showToast` never clears the previous timeout, so back-to-back toasts get dismissed early. | `src/App.jsx:30-33` |
+| B9 | M (verify) | Ctrl+wheel likely zooms the browser page along with the canvas: React attaches `wheel` passively, so `e.preventDefault()` in `handleWheel` may not work. Must be verified in a real browser before fixing (native non-passive listener via ref is the standard fix). | `CanvasView.jsx:313` |
+| B10 | H | No undo/redo, and destructive actions (Reset, Auto Detect, axis switch) irreversibly wipe painted work with no confirmation. Auto Detect replaces all bands with fresh uncolored ones. | `bandReducer.js:218` and app-wide |
+
+### Architecture / code quality (A)
+
+| ID | Sev | Finding |
+|---|---|---|
+| A1 | M | Repeat-pattern state machine is split between the reducer (`tool`) and App state (`repeatFirstBandIdx`, `repeatTemplate`); transitions are not atomic. Consolidate into the reducer (also fixes B6 structurally). |
+| A2 | M | "Which band contains coordinate X" is implemented ~5 times (`App.jsx`, `useBandEngine.js` x2, `bandReducer.js` x2, plus per-pixel loops). Extract a shared `bandIndexAt(coord, sortedDividers)`. |
+| A3 | L | Defensive `[...dividers].sort()` copies appear in ~8 places even though sortedness is already an invariant everywhere except `LOAD_PROJECT`. Sort once at that boundary and delete the copies. |
+| A4 | L | `buildColorizedSync` duplicates ~40 lines between horizontal and vertical branches; unify via axis-major indexing. |
+| A5 | L | `CanvasView` takes 19 props; pass the engine object or a context instead. |
+| A6 | L | Dead weight: `uuid` npm dependency (never imported; code uses `crypto.randomUUID`), unused assets (`hero.png`, `react.svg`, `vite.svg`), placeholder `App.css`, unused exports (`pickColorFromCanvas`, `openFilePicker`, `serializeProject`, `downloadJSON` - the last two get re-used by B4). |
+| A7 | L | `index.css` still carries dark-theme tokens and a dark body background under a light-themed app; visible as a dark flash and on overscroll. |
+| A8 | L | README is the stock Vite template; write a real one. |
+| A9 | L | `deserializeProject` does not sort/clamp dividers to image dims and does not truncate extra bands beyond `dividers.length + 1`. |
+| A10 | L | Plain JS with structural objects (`{hex, rgb, name}`, band shape) flowing through many layers; add JSDoc typedefs for the core shapes (cheaper than a TS migration). |
+
+### Performance (PF)
+
+| ID | Sev | Finding |
+|---|---|---|
+| PF1 | M | Full-res export runs synchronously on the main thread and uses `toDataURL` (doubles memory as base64). Multi-second freeze on large images with no feedback. Fix: Web Worker + `toBlob` + object URL. |
+| PF2 | L | Every mousemove triggers a React state update (`setHoverCoord`) and a full overlay redraw, even for tools that draw no hover guide. rAF-throttle or skip when unused. |
+| PF3 | L | Dividers stored in display px and scaled up at export lose up to `1/displayScale` px of precision (e.g. +-4px on a 4000px-wide image). Fix: store dividers in original-image coordinates and convert for display. |
+| PF4 | L | Full-res and display ImageData are both retained for the whole session (deliberate, see decision log). Optional: keep the original as a Blob and re-decode at export time if memory becomes a problem. |
+
+### UX / design (U)
+
+| ID | Sev | Finding |
+|---|---|---|
+| U1 | H | Undo/redo (same as B10, listed here because it is the top UX gap). |
+| U2 | M | Auto Detect gives no feedback (found count, zero-found case) and destroys existing colors; should report results and re-map colors onto new bands by overlap. |
+| U3 | M | Accessibility: `text-slate-400` on white fails WCAG contrast; icon-only buttons lack `aria-label`; toast is not `aria-live`; canvas has `outline: none` with no focus-visible alternative; shortcuts only work when the canvas is focused. |
+| U4 | M | Mouse-only input; migrate to pointer events to gain touch/pen (tablet users are likely in this domain). |
+| U5 | L | Discoverability: empty state does not mention drag-and-drop; no tool shortcuts (A/P/D/R); no shortcut cheat sheet; rename only discoverable via tooltip. |
+| U6 | L | Polish: band names go out of order after mid-image splits; vertical-axis band labels can hide under the 28px ruler at low zoom; export filename is always `textile-colored.png`; divider info bar shows position but is not editable. |
+| U7 | L | Additive feature candidates: split into N equal bands; demo/sample image; split-view compare slider (keep the existing toggle); localStorage session auto-save. |
+| U8 | L | Axis-switch toast says "dividers cleared" but colors are cleared too; fix wording. |
+
+### Testing / tooling (T)
+
+| ID | Sev | Finding |
+|---|---|---|
+| T1 | M | Only STAMP_PATTERN is unit-tested. Add reducer tests for add/remove/move/nudge divider and paint; pure-function tests for `buildColorizedSync`, `autoDetectDividers`, and projectFile round-trips. |
+| T2 | M | No E2E tests. One Playwright smoke test (upload fixture, add divider, paint, export) would catch the B1-B3 class of bugs. |
+| T3 | L | No CI. Add a GitHub Actions workflow: lint + test + build on push. |
+
+---
+
+## 5. Work plan
+
+Phases are ordered by value and dependency.
+Work items inside a phase are independent unless a dependency is noted.
+One work item = one agent session (see section 6).
+
+Status values: `todo`, `in-progress`, `done`, `blocked`, `skipped (reason)`.
+
+### Phase 1 - Bug fixes (small, independent)
+
+| Item | Fixes | Scope | Acceptance criteria | Tier | Status |
+|---|---|---|---|---|---|
+| 1.1 | B1 | Clear the file input value after load in App (or wire the hook's ref properly). | Uploading the same file twice in a row reloads it. Verified in browser. | sonnet | done |
+| 1.2 | B2 | Show a toast when image loading fails. | A corrupt/non-image file produces a visible error message. | sonnet | todo |
+| 1.3 | B3 | Guard project load when no image is loaded (toast + abort, or prompt for image first). | Loading JSON without an image never shows the broken blank-canvas state. | sonnet | todo |
+| 1.4 | B8 | Store and clear the toast timeout. | Rapid successive toasts each display for their full duration. | sonnet | todo |
+| 1.5 | B7 | Sync ColorControls local state with `activeColor` changes; validate gradient hex inputs like `applyHex` does. | Eyedropper updates the hex field; invalid gradient hex never paints black; HSL and hex stay consistent. | sonnet | todo |
+| 1.6 | B6 | Cancel repeat mode (tool + template + first-band selection) on axis switch and Reset. | After axis switch or Reset, tool is `paint` and no stale template can be stamped. | sonnet | todo |
+| 1.7 | B9 | First reproduce in a browser; if confirmed, attach a native non-passive wheel listener via ref. | Ctrl+wheel zooms only the canvas, never the page. If not reproducible, record that in the decision log and close. | sonnet | todo |
+| 1.R | - | Phase review: verify all Phase 1 items end-to-end, check for regressions against section 3. | All acceptance criteria re-verified in a browser; tests/lint/build green. | opus (review), fable/owner final | todo |
+
+### Phase 2 - Data safety (highest user value)
+
+| Item | Fixes | Scope | Acceptance criteria | Tier | Status |
+|---|---|---|---|---|---|
+| 2.1 | B10/U1 | Reducer-level undo/redo with history snapshots (band/divider state only, not ImageData); Ctrl+Z / Ctrl+Shift+Z; toolbar buttons. | Every destructive action (paint, divider ops, stamp, Auto Detect, Reset, axis switch) is undoable; history capped (e.g. 50); tests for history semantics. | opus (design) then sonnet (implement) | todo |
+| 2.2 | B4 | Restore Save Project: embed the source image (data URL) plus `replaceAllNonBlack` and axis in the JSON; keep Load compatible with old files (version bump + migration). | Save then Load in a fresh session restores the full editing state including the image. Round-trip test added. | opus | todo |
+| 2.3 | U7 | Auto-save working session to localStorage (or IndexedDB if the image payload is too large); offer restore on next visit. | Refresh mid-edit offers to restore; declining starts clean. Depends on 2.2 serialization. | sonnet | todo |
+| 2.4 | U8 | Fix axis-switch toast wording; with undo in place decide whether confirmations are still needed for Reset/Auto Detect (record in decision log). | Wording accurate; decision recorded. | sonnet | todo |
+| 2.R | - | Phase review: attempt to lose data via every destructive path. | No unrecoverable data-loss path remains. | opus (review), fable/owner final | todo |
+
+### Phase 3 - Architecture hygiene (enables later phases)
+
+| Item | Fixes | Scope | Acceptance criteria | Tier | Status |
+|---|---|---|---|---|---|
+| 3.1 | A1 | Move the repeat-pattern state machine fully into the reducer. | All repeat transitions atomic; App no longer holds repeat state; existing repeat tests still pass plus new transition tests. | opus | todo |
+| 3.2 | A2/A3 | Extract `bandIndexAt`; enforce sorted-dividers invariant at `LOAD_PROJECT`; remove defensive sort copies. | One implementation of band lookup; no behavioral change; tests green. | sonnet | todo |
+| 3.3 | B5 | Decide and implement divider-crossing semantics (recommended: clamp drag/nudge between neighbors, which is also what users expect); fix drag tracking to hold a stable divider identity. | Dragging a divider can no longer swap band colors; test added. Decision recorded. | opus (decide) then sonnet | todo |
+| 3.4 | A4 | Merge the horizontal/vertical branches of `buildColorizedSync`. | Pixel-identical output on both axes (add a pure-function test comparing before/after fixtures). | sonnet | todo |
+| 3.5 | A6/A7/A8 | Prune dead code (uuid dep, unused assets/exports, App.css), align `index.css` tokens with the light theme, write a real README. Do not remove `serializeProject`/`downloadJSON` (used by 2.2). | No dead code per `knip`-style manual check; no dark flash on load; README describes the actual product. | sonnet | todo |
+| 3.6 | A9/A10 | Harden `deserializeProject` (sort/clamp/truncate) and add JSDoc typedefs for Color, Band, Gradient, Dims, ProjectFile. | Malformed files cannot produce invariant-violating state; typedefs referenced in hooks and reducer. | sonnet | todo |
+| 3.7 | A5 | Reduce CanvasView prop drilling (pass engine object or context). | CanvasView props materially reduced with no behavior change. | sonnet | todo |
+| 3.R | - | Phase review: full regression pass against section 3 inventory. | All features verified working; tests/lint/build green. | opus (review), fable/owner final | todo |
+
+### Phase 4 - Performance and input robustness
+
+| Item | Fixes | Scope | Acceptance criteria | Tier | Status |
+|---|---|---|---|---|---|
+| 4.1 | PF1 | Web Worker for full-res colorize; `toBlob` + object URL for downloads; progress/disabled state during export. | UI stays responsive exporting a 6000x4000 test image; no base64 duplication. | opus (design) then sonnet | todo |
+| 4.2 | PF3 | Store dividers in original-image coordinates; convert for display. Touches reducer, canvas, colorizer, project files (migration). | Exported band edges exact at full res; display behavior unchanged; project-file version migrated. Do after 3.2. | opus | todo |
+| 4.3 | U4 | Migrate mouse handlers to pointer events (click, drag, pan, hover). | All existing mouse interactions unchanged; basic touch drag/paint works on a tablet or DevTools touch emulation. | sonnet | todo |
+| 4.4 | PF2 | rAF-throttle hover redraws; skip hover state updates for tools that do not use them. | No dropped frames while moving the mouse over a large image (verify with DevTools performance trace). | sonnet | todo |
+| 4.R | - | Phase review with performance traces before/after. | Measured improvements documented in the decision log. | opus (review), fable/owner final | todo |
+
+### Phase 5 - UX polish and additive features
+
+| Item | Fixes | Scope | Acceptance criteria | Tier | Status |
+|---|---|---|---|---|---|
+| 5.1 | U7 | "Split into N equal bands" action (prompt or small input in toolbar). | N equal bands created respecting axis; undoable; existing dividers handling decided and recorded. | sonnet | todo |
+| 5.2 | U2 | Auto Detect feedback (found count toast, zero-found message) and color-preserving re-detect (map old band colors to new bands by overlap). | Colors survive re-detection when bands overlap; feedback shown. | opus | todo |
+| 5.3 | U6 | Editable numeric divider position in the info bar; export filename from source image name; fix band-name ordering after splits; fix vertical label/ruler overlap. | Each polish item verified in browser. | sonnet | todo |
+| 5.4 | U5 | Tool keyboard shortcuts (A/P/D/R plus Esc everywhere) and a shortcuts/help overlay; advertise drag-and-drop in the empty state. | Shortcuts work regardless of panel focus (except while typing in inputs); overlay lists everything. | sonnet | todo |
+| 5.5 | U3 | Accessibility pass: contrast tokens, aria-labels on icon buttons, aria-live toast, focus-visible styles. | Passes an axe-core scan with no serious violations; keyboard-only flow usable. | sonnet | todo |
+| 5.6 | U7 | Demo/sample image button in the empty state; optional split-view compare slider (keep the existing toggle). | Demo loads instantly with bands pre-detected; compare slider works at any zoom. | sonnet | todo |
+| 5.R | - | Final review of the whole effort. | Full manual pass of section 3 plus new features; owner sign-off. | fable/owner | todo |
+
+### Cross-cutting (start alongside Phase 1, keep growing)
+
+| Item | Fixes | Scope | Acceptance criteria | Tier | Status |
+|---|---|---|---|---|---|
+| X.1 | T1 | Reducer tests for divider ops + paint; pure tests for colorize, auto-detect, projectFile round-trip. | Coverage of every reducer action; tests document current intended semantics. | sonnet | todo |
+| X.2 | T2 | Playwright smoke E2E: upload fixture, add divider, paint, toggle original, export PNG. | Runs headless locally and in CI; catches B1/B2/B3-class regressions. | sonnet | todo |
+| X.3 | T3 | GitHub Actions: lint + test + build (+ E2E once X.2 lands). | Green on main; runs on every push/PR. | sonnet | todo |
+
+---
+
+## 6. Agent operating guide
+
+This section is for any agent (Claude Code or otherwise) picking up work from this plan in a later session.
+
+### Session start protocol
+
+1. Read this file fully.
+2. Run `git status --short --branch` and `git log --oneline -5` to understand where the repo is; never assume it matches the baseline.
+3. Run `npm test` and `npm run lint` to confirm a green starting point; if red, fixing that comes first (record what you found in the decision log).
+4. Pick exactly one work item that is `todo` and whose dependencies are `done`; set it to `in-progress` in this file before starting.
+
+### Model routing
+
+Owner's routing policy (mapped to currently available models; the Agent/Task tool accepts the aliases `sonnet`, `opus`, `fable`):
+
+- `sonnet` (Sonnet 5, `claude-sonnet-5`): low-level implementation tasks, mechanical refactors, test writing, research/lookups.
+- `opus` (Opus 4.8, `claude-opus-4-8`): design decisions, cross-cutting changes, synthesis, phase reviews, anything marked `opus` in the tables above.
+- `fable` (Fable 5): final output review at phase boundaries (items `*.R`), or the owner reviews personally.
+- Items marked "opus (design) then sonnet (implement)" mean: produce a short written design first (append it to the decision log), then implement in the same or a follow-up session at the lower tier.
+
+### Focus rules (owner's explicit instructions)
+
+- Do NOT fan out parallel subagents.
+  Work sequentially: one work item, one focused agent, full context on that item only.
+- Do not batch multiple work items into one session unless they are trivially related (e.g. 1.2 + 1.4).
+- Do not start opportunistic refactors outside the current item's scope; if you find something, add it to the findings register instead.
+- Delegation is allowed only when the plan tier says so (e.g. an opus session delegating implementation to a sonnet executor), and only one delegate at a time.
+
+### Verification protocol (before marking anything `done`)
+
+1. Reproduce-first for bugs: demonstrate the broken behavior in the running app (`npm run dev`, real browser) before fixing (constraint 7).
+2. After the change: `npm test`, `npm run lint`, `npm run build` all green.
+3. Exercise the change end-to-end in the browser as a user would; check the acceptance criteria literally.
+4. Regression-check the neighboring features from the section 3 inventory (e.g. after touching CanvasView, verify zoom/pan/paint/drag still work on both axes).
+5. Be picky about the UI: if something looks visibly off while verifying, fix it if in scope or file it in the findings register if not.
+
+### Updating this document (mandatory)
+
+- Set the work item status (`todo` -> `in-progress` -> `done`) as you go.
+- Append one decision-log entry per session: date, item ID, what was done, any decisions made, anything discovered.
+- If you discover a new bug or opportunity, add it to the findings register with the next free ID; do not silently expand your own scope.
+- Never rewrite history in this file; append.
+
+### Commit protocol
+
+- Conventional prefix, imperative subject (matches existing history).
+- One work item per commit where practical; reference the item ID in the body (e.g. `Plan item 1.1`).
+- No co-author lines for agents (constraint 5).
+- Commit only when the verification protocol has passed.
+
+---
+
+## 7. Decision log
+
+Append-only. Newest at the bottom.
+
+- 2026-07-10 - Plan created from a full-codebase review at baseline `a0c8192` (review performed by Fable 5 session). Tests 14/14 green, lint clean at baseline.
+- 2026-07-10 - Pre-existing decisions inherited from earlier sessions (do not relitigate without owner input): dual ImageData (display + full-res) kept in refs by design; dirty-flag colorizer cache marked during render deliberately; band-split keeps color on the first fragment by design; drag tracking anchored by position value rather than array index.
+
+---
+
+## 8. Known non-goals (for now)
+
+- No backend, accounts, or server-side persistence.
+- No TypeScript migration (JSDoc typedefs only, A10).
+- No mobile-specific layout work beyond pointer-event support (U4).
+- No removal of the Load button even while Save is being reworked.
