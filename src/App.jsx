@@ -145,6 +145,10 @@ export default function App() {
 
   // Project load (JSON save removed from UI for now — functionality being reworked)
   const handleLoadProject = useCallback(async () => {
+    if (!hasImage) {
+      showToast('Load an image first, then load the project file', 'info');
+      return;
+    }
     try {
       const text = await openJSONFile();
       const data = deserializeProject(text);
@@ -153,7 +157,7 @@ export default function App() {
     } catch (err) {
       showToast(`Failed to load: ${err.message}`, 'error');
     }
-  }, [engine, showToast]);
+  }, [engine, showToast, hasImage]);
 
   // Eyedropper (Chromium-only)
   const handleEyedropper = useCallback(async () => {
