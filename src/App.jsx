@@ -42,9 +42,19 @@ export default function App() {
 
   const handleSetDividerAxis = useCallback((axis) => {
     if (axis === state.dividerAxis) return;
+    engine.setTool('paint');
+    setRepeatFirstBandIdx(null);
+    setRepeatTemplate(null);
     engine.setDividerAxis(axis);
     showToast(`Switched to ${axis} bands — dividers cleared`, 'info');
   }, [engine, state.dividerAxis, showToast]);
+
+  const handleReset = useCallback(() => {
+    engine.setTool('paint');
+    setRepeatFirstBandIdx(null);
+    setRepeatTemplate(null);
+    engine.reset();
+  }, [engine]);
 
   const handleRepeatPattern = useCallback(() => {
     if (state.tool === 'repeatSelect' || state.tool === 'repeatPlace') {
@@ -241,7 +251,7 @@ export default function App() {
           tool={state.tool}
           setTool={engine.setTool}
           hasImage={hasImage}
-          onReset={engine.reset}
+          onReset={handleReset}
           onAutoDetect={engine.autoDetect}
           onToggleOriginal={engine.toggleOriginal}
           showOriginal={state.showOriginal}
