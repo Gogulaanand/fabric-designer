@@ -165,7 +165,7 @@ Status values: `todo`, `in-progress`, `done`, `blocked`, `skipped (reason)`.
 
 | Item | Fixes | Scope | Acceptance criteria | Tier | Status |
 |---|---|---|---|---|---|
-| 2.1 | B10/U1 | Reducer-level undo/redo with history snapshots (band/divider state only, not ImageData); Ctrl+Z / Ctrl+Shift+Z; toolbar buttons. | Every destructive action (paint, divider ops, stamp, Auto Detect, Reset, axis switch) is undoable; history capped (e.g. 50); tests for history semantics. | opus (design) then sonnet (implement) | todo |
+| 2.1 | B10/U1 | Reducer-level undo/redo with history snapshots (band/divider state only, not ImageData); Ctrl+Z / Ctrl+Shift+Z; toolbar buttons. | Every destructive action (paint, divider ops, stamp, Auto Detect, Reset, axis switch) is undoable; history capped (e.g. 50); tests for history semantics. | opus (design) then sonnet (implement) | done |
 | 2.2 | B4 | Restore Save Project: embed the source image (data URL) plus `replaceAllNonBlack` and axis in the JSON; keep Load compatible with old files (version bump + migration). | Save then Load in a fresh session restores the full editing state including the image. Round-trip test added. | opus | todo |
 | 2.3 | U7 | Auto-save working session to localStorage (or IndexedDB if the image payload is too large); offer restore on next visit. | Refresh mid-edit offers to restore; declining starts clean. Depends on 2.2 serialization. | sonnet | todo |
 | 2.4 | U8 | Fix axis-switch toast wording; with undo in place decide whether confirmations are still needed for Reset/Auto Detect (record in decision log). | Wording accurate; decision recorded. | sonnet | todo |
@@ -266,6 +266,14 @@ Owner's routing policy (mapped to currently available models; the Agent/Task too
 - No co-author lines for agents (constraint 5).
 - Commit only when the verification protocol has passed.
 
+### Workflow execution (alternative to one-session-per-item)
+
+A whole phase may instead be executed in a single session via the phase-runner workflow at `.claude/workflows/phase-runner.js`.
+It preserves the routing policy and focus rules automatically: research and final gate on `fable`, implementation strictly sequential with the model per task taken from the tier column, review on `opus` with a bounded fix loop (fixes on `sonnet`), and no parallel fan-out.
+Items marked "opus (design) then sonnet (implement)" become two consecutive tasks inside the run, with the design appended to the decision log before implementation starts.
+The workflow never touches the phase-review item (`*.R`): the invoking session reads the final report, re-verifies anything doubtful, updates `*.R`, appends the closing decision-log entry, and commits the doc.
+Run it only on an explicit owner request, passing the exact phase heading, e.g. `{phase: "Phase 2 - Data safety (highest user value)"}`.
+
 ---
 
 ## 7. Decision log
@@ -275,6 +283,271 @@ Append-only. Newest at the bottom.
 - 2026-07-10 - Plan created from a full-codebase review at baseline `a0c8192` (review performed by Fable 5 session). Tests 14/14 green, lint clean at baseline.
 - 2026-07-10 - Pre-existing decisions inherited from earlier sessions (do not relitigate without owner input): dual ImageData (display + full-res) kept in refs by design; dirty-flag colorizer cache marked during render deliberately; band-split keeps color on the first fragment by design; drag tracking anchored by position value rather than array index.
 - 2026-07-10 - Phase 1 session (sonnet, items 1.1-1.7). Items completed: 1.1 (B1), 1.2 (B2), 1.3 (B3), 1.4 (B8), 1.5 (B7), 1.6 (B6). Item 1.7 (B9) skipped as not reproducible: tested Ctrl+scroll over the canvas in Chrome with React 19 / Vite 8; canvas zoom processed correctly (100% to 110%) and window.devicePixelRatio remained at 2.0 throughout, confirming the browser page did not zoom. React 19's onWheel delegation is non-passive and e.preventDefault() works. No native listener fix needed. All 14 tests green, lint clean, build passing after each item.
+- 2026-07-10 - Added `.claude/workflows/phase-runner.js` (adapted from the astro project's runner) as an owner-approved alternative execution path for whole phases; see the "Workflow execution" subsection in section 6. Key adaptations: tasks carry a per-task model taken from the plan's tier column, house rules mirror section 2, agents maintain this doc's statuses and decision log, and the `*.R` items stay owner-closed.
+- 2026-07-10 - Item 2.1 design (opus). Undo/redo architecture for bandReducer. Full design follows.
+
+### 2.1 Design: Undo/Redo Architecture
+
+#### (a) Pattern: wrapper (higher-order) reducer
+
+A new `undoableReducer` function wraps `bandReducer`. It manages a three-part state:
+
+```js
+{
+  past: [],      // Array<Snapshot>, most recent last, capped at HISTORY_CAP
+  present: { ... bandReducer state ... },
+  future: [],    // Array<Snapshot>, for redo
+}
+```
+
+`useReducer(undoableReducer, ...)` replaces the current `useReducer(bandReducer, ...)` in `useBandEngine.js`. The rest of the app continues to consume `state` (which is `undoState.present`) and dispatch actions unchanged - the wrapper is transparent.
+
+This pattern was chosen over modifying `bandReducer` directly because:
+- `bandReducer` stays pure and testable in isolation (14 existing tests unchanged).
+- History logic is a single orthogonal concern in one file.
+- No action-type pollution: existing action strings stay the same.
+
+The wrapper lives in a new file: `src/reducers/undoReducer.js`.
+
+#### (b) Snapshot contents - what is captured
+
+A snapshot contains only the slices that represent user-visible editing work and that are lost on destructive actions:
+
+```js
+function takeSnapshot(state) {
+  return {
+    bands: state.bands,             // Array<Band> (structural clone via spread)
+    dividers: state.dividers,       // Array<number>
+    selectedBandId: state.selectedBandId,
+    dividerAxis: state.dividerAxis,
+  };
+}
+```
+
+Explicitly excluded from snapshots:
+- `originalDims`, `displayDims`, `displayScale` - set once on image load, never destructively changed.
+- `tool`, `activeColor`, `swatches`, `copiedColor`, `copiedGradient`, `showOriginal` - UI preferences, not editing data. Undoing a paint should not switch the user's active tool or selected color.
+- ImageData refs - too large, lives outside the reducer in `useBandEngine` refs.
+
+Restoring a snapshot merges it back into the current present:
+
+```js
+function applySnapshot(currentState, snapshot) {
+  return {
+    ...currentState,
+    bands: snapshot.bands,
+    dividers: snapshot.dividers,
+    selectedBandId: snapshot.selectedBandId,
+    dividerAxis: snapshot.dividerAxis,
+  };
+}
+```
+
+#### (c) Destructive actions - which actions create history entries
+
+Before dispatching to `bandReducer`, the wrapper checks the action type. If it is destructive, a snapshot of `present` is pushed to `past` (and `future` is cleared, since a new branch of edits has started).
+
+Destructive action types (create a history entry):
+
+| Action type | Why destructive |
+|---|---|
+| `PAINT_BAND` | Overwrites band color |
+| `SET_GRADIENT` | Overwrites band gradient |
+| `CLEAR_BAND` | Removes band color/gradient |
+| `ADD_DIVIDER` | Structural change to bands array |
+| `REMOVE_DIVIDER` | Structural change to bands array |
+| `MOVE_DIVIDER` | Changes divider position (band geometry) |
+| `NUDGE_DIVIDER` | Changes divider position (band geometry) |
+| `STAMP_PATTERN` | Bulk structural + color change |
+| `SET_DIVIDERS_FROM_AUTO` | Replaces all dividers and bands |
+| `SET_DIVIDER_AXIS` | Clears dividers and bands, changes axis |
+| `RESET` | Clears all dividers and bands |
+| `TOGGLE_LOCK` | Changes band lock state (affects future paint-ability) |
+| `PASTE_COLOR` | Overwrites band color/gradient |
+| `RENAME_BAND` | Changes band name (user data) |
+
+Non-destructive action types (no history entry, pass through to inner reducer):
+
+| Action type | Why non-destructive |
+|---|---|
+| `SELECT_BAND` | UI selection, no data change |
+| `SET_TOOL` | UI preference |
+| `SET_ACTIVE_COLOR` | UI preference |
+| `ADD_SWATCH` | Swatch palette management |
+| `REMOVE_SWATCH` | Swatch palette management |
+| `COPY_COLOR` | Clipboard, no data change |
+| `TOGGLE_ORIGINAL` | View toggle |
+| `LOAD_IMAGE` | Fresh start - clears history (see section d) |
+| `LOAD_PROJECT` | Fresh start - clears history (see section d) |
+
+Note on MOVE_DIVIDER / NUDGE_DIVIDER coalescing: during a drag operation, many MOVE_DIVIDER actions fire in rapid succession. To avoid filling history with intermediate positions, the wrapper implements coalescing: if the previous history entry was also a MOVE_DIVIDER or NUDGE_DIVIDER for the same divider index and less than 500ms has elapsed, the snapshot is not pushed again (the original pre-drag snapshot remains). This means undoing a drag restores the position from before the drag started, not intermediate positions.
+
+Implementation: the wrapper stores `lastActionType`, `lastActionMeta` (the divider index), and `lastActionTime` on the undoable state. Coalescing logic:
+
+```js
+const COALESCE_TYPES = new Set(['MOVE_DIVIDER', 'NUDGE_DIVIDER']);
+const COALESCE_MS = 500;
+
+function shouldCoalesce(prevType, prevMeta, prevTime, action) {
+  if (!COALESCE_TYPES.has(action.type)) return false;
+  if (prevType !== action.type) return false;
+  if (prevMeta !== action.index) return false;
+  return (Date.now() - prevTime) < COALESCE_MS;
+}
+```
+
+#### (d) History-clearing actions
+
+These actions reset history entirely (empty `past` and `future`):
+
+- `LOAD_IMAGE` - A new image means a completely fresh editing session. The old history is meaningless.
+- `LOAD_PROJECT` - Loading a saved project is a fresh starting point. Undoing past it would not make sense.
+
+When one of these fires, the wrapper passes the action to `bandReducer`, then sets `past: []` and `future: []` on the result.
+
+#### (e) History cap
+
+Maximum 50 entries in `past`. When pushing a new snapshot and `past.length >= 50`, the oldest entry (`past[0]`) is shifted off. This bounds memory usage.
+
+```js
+const HISTORY_CAP = 50;
+
+function pushHistory(past, snapshot) {
+  const next = [...past, snapshot];
+  if (next.length > HISTORY_CAP) next.shift();
+  return next;
+}
+```
+
+#### (f) UNDO and REDO action types
+
+The wrapper handles two new meta-action types that never reach `bandReducer`:
+
+```js
+case 'UNDO': {
+  if (past.length === 0) return undoState; // nothing to undo
+  const previous = past[past.length - 1];
+  return {
+    past: past.slice(0, -1),
+    present: applySnapshot(present, previous),
+    future: [takeSnapshot(present), ...future],
+    lastActionType: null,
+    lastActionMeta: null,
+    lastActionTime: 0,
+  };
+}
+
+case 'REDO': {
+  if (future.length === 0) return undoState; // nothing to redo
+  const next = future[0];
+  return {
+    past: [...past, takeSnapshot(present)],
+    present: applySnapshot(present, next),
+    future: future.slice(1),
+    lastActionType: null,
+    lastActionMeta: null,
+    lastActionTime: 0,
+  };
+}
+```
+
+#### (g) Integration into useBandEngine.js
+
+Minimal changes to `useBandEngine.js`:
+
+1. Import `createUndoableReducer` from `undoReducer.js` and `bandReducer` / `INITIAL_STATE` from `bandReducer.js`.
+2. Create the wrapper once at module level: `const undoableReducer = createUndoableReducer(bandReducer);`
+3. Replace `useReducer(bandReducer, INITIAL_STATE)` with `useReducer(undoableReducer, { past: [], present: INITIAL_STATE, future: [], lastActionType: null, lastActionMeta: null, lastActionTime: 0 })`.
+4. Alias `state = undoState.present` so all existing destructured access stays the same.
+5. Derive `canUndo = undoState.past.length > 0` and `canRedo = undoState.future.length > 0`.
+6. Add `undo` and `redo` callbacks: `dispatch({ type: 'UNDO' })` and `dispatch({ type: 'REDO' })`.
+7. Expose `undo`, `redo`, `canUndo`, `canRedo` from the hook return.
+
+No other files need to change their dispatch calls. The wrapper is fully transparent.
+
+#### (h) Keyboard bindings - location and implementation
+
+Undo/redo shortcuts must work regardless of which element is focused (toolbar buttons, sidebar, color controls), not just when the canvas container has focus. Therefore, the binding is a `useEffect` with a global `window` keydown listener in `App.jsx`, not in `CanvasView.jsx`.
+
+```js
+// In App.jsx
+useEffect(() => {
+  function handleKeyDown(e) {
+    // Skip if user is typing in an input/textarea
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      engine.undo();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+      e.preventDefault();
+      engine.redo();
+    }
+    // Also support Ctrl+Y for redo (Windows convention)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      e.preventDefault();
+      engine.redo();
+    }
+  }
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, [engine]);
+```
+
+`e.metaKey` covers macOS Cmd+Z. The input/textarea guard prevents undo from firing while the user is editing a band name or hex input.
+
+#### (i) Toolbar button placement
+
+Two new buttons are added to `Toolbar.jsx`, placed after the axis toggle group and before the tool buttons, since undo/redo is a global action that logically precedes tool-specific work:
+
+```
+[Horizontal|Vertical] | [Undo] [Redo] | [Add Line] [Paint] [Drag Line] [Remove Line] | ...
+```
+
+The buttons:
+- Undo: icon `↶`, label `Undo`, disabled when `!canUndo`, color `#64748b` (matches Reset/Auto Detect).
+- Redo: icon `↷`, label `Redo`, disabled when `!canRedo`, color `#64748b`.
+- Tooltip shows the keyboard shortcut: "Undo (Ctrl+Z)" / "Redo (Ctrl+Shift+Z)".
+
+New props added to `Toolbar`: `onUndo`, `onRedo`, `canUndo`, `canRedo`.
+
+#### (j) Test plan for undoReducer
+
+New file: `src/reducers/undoReducer.test.js`. Test cases:
+
+1. **Destructive action creates history entry**: dispatch PAINT_BAND, verify `past.length === 1`.
+2. **Non-destructive action does not create history entry**: dispatch SELECT_BAND, verify `past.length === 0`.
+3. **UNDO restores previous state**: paint, undo, verify band color is back to null.
+4. **REDO re-applies undone action**: paint, undo, redo, verify band color is restored.
+5. **UNDO with empty history is a no-op**: dispatch UNDO on fresh state, verify no change.
+6. **REDO with empty future is a no-op**: dispatch REDO on fresh state, verify no change.
+7. **New destructive action clears future**: paint, undo, add divider, verify `future.length === 0`.
+8. **History cap at 50**: dispatch 55 paints, verify `past.length === 50` (oldest 5 dropped).
+9. **LOAD_IMAGE clears history**: paint several times, load image, verify `past` and `future` are empty.
+10. **LOAD_PROJECT clears history**: paint several times, load project, verify `past` and `future` are empty.
+11. **MOVE_DIVIDER coalescing**: move same divider twice rapidly, verify only one history entry; move after 500ms gap, verify two entries.
+12. **Undo across SET_DIVIDER_AXIS**: switch axis (destructive), undo, verify original axis and bands restored.
+13. **Undo RESET**: add dividers, paint, reset, undo, verify dividers and colors restored.
+14. **Undo STAMP_PATTERN**: stamp, undo, verify original band structure restored.
+15. **Snapshot isolation**: modify a band after snapshot, verify the snapshot's band array is not mutated (structural sharing is safe because bandReducer always spreads).
+
+#### (k) File inventory for implementation
+
+| File | Change |
+|---|---|
+| `src/reducers/undoReducer.js` | New file. Wrapper reducer + `createUndoableReducer`, `HISTORY_CAP`, snapshot helpers. |
+| `src/reducers/undoReducer.test.js` | New file. 15 test cases above. |
+| `src/hooks/useBandEngine.js` | Replace `useReducer` call; expose `undo`, `redo`, `canUndo`, `canRedo`. ~15 lines changed. |
+| `src/App.jsx` | Add `useEffect` for global Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y listener. Pass `onUndo`, `onRedo`, `canUndo`, `canRedo` to Toolbar. ~20 lines added. |
+| `src/components/Toolbar/Toolbar.jsx` | Accept 4 new props; render two ToolBtn for undo/redo between axis toggle and tool buttons. ~15 lines added. |
+| `src/reducers/bandReducer.js` | No changes. |
+| `src/reducers/bandReducer.test.js` | No changes. |
+
+Total estimated diff: ~250 lines new, ~15 lines modified.
+
+- 2026-07-10 - Item 2.1 implementation (sonnet). Implemented the undo/redo design from the decision log verbatim. Created `src/reducers/undoReducer.js` with the `createUndoableReducer` wrapper (past/future stacks, 50-entry cap, MOVE_DIVIDER/NUDGE_DIVIDER coalescing within 500ms, history clearing on LOAD_IMAGE/LOAD_PROJECT, no-op detection). Integrated into `useBandEngine.js` by wrapping bandReducer - all existing consumers unchanged. Added global Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y keyboard handler in `App.jsx` with input/textarea guard. Added Undo/Redo toolbar buttons in `Toolbar.jsx` between axis toggle and tool buttons. Created 17 tests in `undoReducer.test.js` covering all 15 design cases plus edge cases. All 31 tests pass, lint clean, build passing. No changes to `bandReducer.js` or `bandReducer.test.js`.
 
 ---
 
@@ -284,3 +557,4 @@ Append-only. Newest at the bottom.
 - No TypeScript migration (JSDoc typedefs only, A10).
 - No mobile-specific layout work beyond pointer-event support (U4).
 - No removal of the Load button even while Save is being reworked.
+

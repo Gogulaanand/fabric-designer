@@ -24,6 +24,7 @@ export function Toolbar({
   onRepeatPattern, canRepeat,
   repeatFirstSelected,
   replaceAllNonBlack, onToggleReplaceAllNonBlack,
+  onUndo, onRedo, canUndo, canRedo,
 }) {
   const hint = getRepeatHint(tool, repeatFirstSelected) ?? TOOLS.find(t => t.id === tool)?.hint ?? '';
   const isRepeatMode = tool === 'repeatSelect' || tool === 'repeatPlace';
@@ -52,6 +53,18 @@ export function Toolbar({
             ║ Vertical
           </AxisBtn>
         </div>
+
+        <div className="w-px h-6 bg-slate-200 mx-0.5" />
+
+        {/* Undo / Redo */}
+        <ToolBtn disabled={!canUndo} color="#64748b" onClick={onUndo} title="Undo (Ctrl+Z)">
+          <span>↶</span>
+          <span>Undo</span>
+        </ToolBtn>
+        <ToolBtn disabled={!canRedo} color="#64748b" onClick={onRedo} title="Redo (Ctrl+Shift+Z)">
+          <span>↷</span>
+          <span>Redo</span>
+        </ToolBtn>
 
         <div className="w-px h-6 bg-slate-200 mx-0.5" />
 

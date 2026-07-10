@@ -1,12 +1,23 @@
 import { useReducer, useCallback, useRef } from 'react';
 import { bandReducer, INITIAL_STATE } from '../reducers/bandReducer.js';
+import { createUndoableReducer, createUndoableState } from '../reducers/undoReducer.js';
 import { makeColor } from '../utils/colorUtils.js';
 import { autoDetectDividers } from '../utils/imageUtils.js';
 
-export function useBandEngine() {
-  const [state, dispatch] = useReducer(bandReducer, INITIAL_STATE);
+const undoableReducer = createUndoableReducer(bandReducer);
+const UNDO_INITIAL = createUndoableState(INITIAL_STATE);
 
-  // Image data refs (not in reducer — too large for state)
+export function useBandEngine() {
+  const [undoState, dispatch] = useReducer(undoableReducer, UNDO_INITIAL);
+  const state = undoState.present;
+
+  // Undo / redo derived state and callbacks
+  const canUndo = undoState.past.length > 0;
+  const canRedo = undoState.future.length > 0;
+  const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
+  const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
+
+  // Image data refs (not in reducer - too large for state)
   const originalImageDataRef = useRef(null);
   const displayImageDataRef = useRef(null);
 
@@ -55,7 +66,7 @@ export function useBandEngine() {
     dispatch({ type: 'SET_DIVIDERS_FROM_AUTO', dividers });
   }, [state.displayDims, state.dividerAxis]);
 
-  // Works for both horizontal (coord = y) and vertical (coord = x) — CanvasView passes the right axis coordinate
+  // Works for both horizontal (coord = y) and vertical (coord = x) - CanvasView passes the right axis coordinate
   const paintBandByY = useCallback((coord) => {
     const { dividers, bands, activeColor } = state;
     const sorted = [...dividers].sort((a, b) => a - b);
@@ -116,6 +127,11 @@ export function useBandEngine() {
     state,
     originalImageDataRef,
     displayImageDataRef,
+    // Undo / redo
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     // Actions
     loadImage,
     addDivider,

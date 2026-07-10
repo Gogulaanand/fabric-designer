@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useBandEngine } from './hooks/useBandEngine.js';
 import { useColorizer } from './hooks/useColorizer.js';
 import { useImageLoader } from './hooks/useImageLoader.js';
@@ -26,6 +26,31 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [hoveredBandId, setHoveredBandId] = useState(null);
   const toastTimerRef = useRef(null);
+
+  // Global undo/redo keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e) {
+      // Skip if user is typing in an input/textarea
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        engine.undo();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        engine.redo();
+      }
+      // Also support Ctrl+Y for redo (Windows convention)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault();
+        engine.redo();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [engine]);
 
   const showToast = useCallback((msg, type = 'info') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -264,6 +289,10 @@ export default function App() {
           repeatFirstSelected={repeatFirstBandIdx !== null}
           replaceAllNonBlack={replaceAllNonBlack}
           onToggleReplaceAllNonBlack={setReplaceAllNonBlack}
+          onUndo={engine.undo}
+          onRedo={engine.redo}
+          canUndo={engine.canUndo}
+          canRedo={engine.canRedo}
         />
       </div>
 
