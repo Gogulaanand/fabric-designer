@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { loadImageFromFile } from '../utils/imageUtils.js';
 
-export function useImageLoader(onLoad) {
+export function useImageLoader(onLoad, onError) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
@@ -19,11 +19,12 @@ export function useImageLoader(onLoad) {
       onLoad(result);
     } catch (err) {
       setError(err.message);
+      onError?.(err.message);
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  }, [onLoad]);
+  }, [onLoad, onError]);
 
   const handleInputChange = useCallback((e) => {
     handleFile(e.target.files[0]);

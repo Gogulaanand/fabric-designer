@@ -153,7 +153,7 @@ Status values: `todo`, `in-progress`, `done`, `blocked`, `skipped (reason)`.
 | Item | Fixes | Scope | Acceptance criteria | Tier | Status |
 |---|---|---|---|---|---|
 | 1.1 | B1 | Clear the file input value after load in App (or wire the hook's ref properly). | Uploading the same file twice in a row reloads it. Verified in browser. | sonnet | done |
-| 1.2 | B2 | Show a toast when image loading fails. | A corrupt/non-image file produces a visible error message. | sonnet | todo |
+| 1.2 | B2 | Show a toast when image loading fails. | A corrupt/non-image file produces a visible error message. | sonnet | done |
 | 1.3 | B3 | Guard project load when no image is loaded (toast + abort, or prompt for image first). | Loading JSON without an image never shows the broken blank-canvas state. | sonnet | todo |
 | 1.4 | B8 | Store and clear the toast timeout. | Rapid successive toasts each display for their full duration. | sonnet | todo |
 | 1.5 | B7 | Sync ColorControls local state with `activeColor` changes; validate gradient hex inputs like `applyHex` does. | Eyedropper updates the hex field; invalid gradient hex never paints black; HSL and hex stay consistent. | sonnet | todo |

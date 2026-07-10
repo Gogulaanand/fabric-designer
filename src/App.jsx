@@ -31,7 +31,10 @@ export default function App() {
     setTimeout(() => setToast(null), 2500);
   }, []);
 
-  const { handleInputChange, handleDrop, handleDragOver, loading, fileInputRef } = useImageLoader(loadImage);
+  const { handleInputChange, handleDrop, handleDragOver, loading, fileInputRef } = useImageLoader(
+    loadImage,
+    (msg) => showToast(msg, 'error'),
+  );
 
   const hasImage = !!state.displayDims;
 
