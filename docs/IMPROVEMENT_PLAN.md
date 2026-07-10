@@ -158,7 +158,7 @@ Status values: `todo`, `in-progress`, `done`, `blocked`, `skipped (reason)`.
 | 1.4 | B8 | Store and clear the toast timeout. | Rapid successive toasts each display for their full duration. | sonnet | done |
 | 1.5 | B7 | Sync ColorControls local state with `activeColor` changes; validate gradient hex inputs like `applyHex` does. | Eyedropper updates the hex field; invalid gradient hex never paints black; HSL and hex stay consistent. | sonnet | done |
 | 1.6 | B6 | Cancel repeat mode (tool + template + first-band selection) on axis switch and Reset. | After axis switch or Reset, tool is `paint` and no stale template can be stamped. | sonnet | done |
-| 1.7 | B9 | First reproduce in a browser; if confirmed, attach a native non-passive wheel listener via ref. | Ctrl+wheel zooms only the canvas, never the page. If not reproducible, record that in the decision log and close. | sonnet | todo |
+| 1.7 | B9 | First reproduce in a browser; if confirmed, attach a native non-passive wheel listener via ref. | Ctrl+wheel zooms only the canvas, never the page. If not reproducible, record that in the decision log and close. | sonnet | skipped (not reproducible) |
 | 1.R | - | Phase review: verify all Phase 1 items end-to-end, check for regressions against section 3. | All acceptance criteria re-verified in a browser; tests/lint/build green. | opus (review), fable/owner final | todo |
 
 ### Phase 2 - Data safety (highest user value)
@@ -274,6 +274,7 @@ Append-only. Newest at the bottom.
 
 - 2026-07-10 - Plan created from a full-codebase review at baseline `a0c8192` (review performed by Fable 5 session). Tests 14/14 green, lint clean at baseline.
 - 2026-07-10 - Pre-existing decisions inherited from earlier sessions (do not relitigate without owner input): dual ImageData (display + full-res) kept in refs by design; dirty-flag colorizer cache marked during render deliberately; band-split keeps color on the first fragment by design; drag tracking anchored by position value rather than array index.
+- 2026-07-10 - Phase 1 session (sonnet, items 1.1-1.7). Items completed: 1.1 (B1), 1.2 (B2), 1.3 (B3), 1.4 (B8), 1.5 (B7), 1.6 (B6). Item 1.7 (B9) skipped as not reproducible: tested Ctrl+scroll over the canvas in Chrome with React 19 / Vite 8; canvas zoom processed correctly (100% to 110%) and window.devicePixelRatio remained at 2.0 throughout, confirming the browser page did not zoom. React 19's onWheel delegation is non-passive and e.preventDefault() works. No native listener fix needed. All 14 tests green, lint clean, build passing after each item.
 
 ---
 
