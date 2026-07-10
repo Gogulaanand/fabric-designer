@@ -10,8 +10,10 @@ import { ExportDialog } from './components/ExportDialog/ExportDialog.jsx';
 import { deserializeProject, serializeProject, downloadJSON, openJSONFile } from './utils/projectFile.js';
 import { loadImageFromDataURL } from './utils/imageUtils.js';
 import { makeColor } from './utils/colorUtils.js';
+import { saveSession, loadSession, clearSession } from './utils/sessionStorage.js';
 
 const PANEL_TABS = ['Bands', 'Colors', 'Export'];
+const AUTO_SAVE_DELAY_MS = 2000;
 
 export default function App() {
   const engine = useBandEngine();
@@ -19,6 +21,7 @@ export default function App() {
   const [replaceAllNonBlack, setReplaceAllNonBlack] = useState(true);
   const [repeatFirstBandIdx, setRepeatFirstBandIdx] = useState(null);
   const [repeatTemplate, setRepeatTemplate] = useState(null);
+  const [restoreBanner, setRestoreBanner] = useState(null); // { data, json } or null
 
   const { getOffscreenCanvas, buildFullResExport } = useColorizer(displayImageDataRef, state, replaceAllNonBlack);
 
@@ -52,6 +55,104 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [engine]);
+
+  // --- Auto-save: debounce writes to IndexedDB 2s after last state change ---
+  const autoSaveTimerRef = useRef(null);
+  // Track whether app initialization / session restore is in progress to avoid
+  // overwriting the saved session with an empty initial state.
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    // Do not auto-save until the user has either restored a session, declined,
+    // or the initial check found nothing to restore. This prevents the empty
+    // initial state from overwriting a valid saved session on first render.
+    if (!initializedRef.current) return;
+    // Only auto-save when an image is loaded (otherwise there is nothing useful to persist)
+    if (!state.displayDims) return;
+
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      const engineState = engine.getSerializableState();
+      const json = serializeProject(engineState, {
+        imageDataURL: imageDataURLRef.current,
+        replaceAllNonBlack,
+      });
+      saveSession(json).catch(() => {
+        // Silently ignore save errors (quota, private browsing, etc.)
+      });
+    }, AUTO_SAVE_DELAY_MS);
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [state, replaceAllNonBlack, engine, imageDataURLRef]);
+
+  // --- On mount: check for a saved session and show restore banner ---
+  useEffect(() => {
+    let cancelled = false;
+    loadSession()
+      .then((json) => {
+        if (cancelled) return;
+        if (!json) {
+          // No saved session - mark as initialized so auto-save can begin
+          initializedRef.current = true;
+          return;
+        }
+        try {
+          const data = deserializeProject(json);
+          // Only offer restore if the saved session has meaningful content
+          // (an embedded image or at least some dividers/painted bands)
+          const hasMeaningfulContent = data.imageDataURL ||
+            data.dividers.length > 0 ||
+            data.bands.some(b => b.color || b.gradient);
+          if (hasMeaningfulContent) {
+            setRestoreBanner({ data, json });
+          } else {
+            initializedRef.current = true;
+          }
+        } catch {
+          // Corrupt saved session - clear it and proceed
+          clearSession().catch(() => {});
+          initializedRef.current = true;
+        }
+      })
+      .catch(() => {
+        // IndexedDB unavailable - proceed without restore
+        initializedRef.current = true;
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // --- Restore / decline handlers ---
+  const handleRestoreSession = useCallback(async () => {
+    if (!restoreBanner) return;
+    const { data } = restoreBanner;
+    try {
+      // Load the embedded image if present
+      if (data.imageDataURL) {
+        const imgResult = await loadImageFromDataURL(data.imageDataURL);
+        loadImage(imgResult);
+      }
+      // Restore replaceAllNonBlack
+      if (typeof data.replaceAllNonBlack === 'boolean') {
+        setReplaceAllNonBlack(data.replaceAllNonBlack);
+      }
+      // Restore project state
+      engine.loadProject(data);
+      showToast('Session restored!', 'success');
+    } catch {
+      showToast('Failed to restore session', 'error');
+      clearSession().catch(() => {});
+    }
+    setRestoreBanner(null);
+    initializedRef.current = true;
+  }, [restoreBanner, engine, loadImage, showToast]);
+
+  const handleDeclineRestore = useCallback(() => {
+    setRestoreBanner(null);
+    clearSession().catch(() => {});
+    initializedRef.current = true;
+  }, []);
 
   const showToast = useCallback((msg, type = 'info') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -261,6 +362,35 @@ export default function App() {
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
+      {/* Restore session banner */}
+      {restoreBanner && (
+        <div
+          className="flex items-center justify-between px-5 py-2.5 text-sm font-medium flex-shrink-0"
+          style={{
+            background: '#eff6ff',
+            borderBottom: '1px solid #93c5fd',
+            color: '#1d4ed8',
+          }}
+        >
+          <span>A previous editing session was found. Would you like to restore it?</span>
+          <div className="flex items-center gap-2 ml-4">
+            <button
+              onClick={handleRestoreSession}
+              className="px-3 py-1 rounded-md text-sm font-medium text-white cursor-pointer"
+              style={{ background: '#3b82f6' }}
+            >
+              Restore
+            </button>
+            <button
+              onClick={handleDeclineRestore}
+              className="px-3 py-1 rounded-md text-sm font-medium cursor-pointer"
+              style={{ background: '#e2e8f0', color: '#475569' }}
+            >
+              Start Fresh
+            </button>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <header className="flex items-center justify-between px-5 py-3 bg-white border-b border-slate-200 flex-shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
