@@ -13,8 +13,7 @@ dist-ssr
 *.local
 
 # OMC runtime state (not source)
-.omc/state/
-.omc/autopilot/
+.omc/
 
 # Editor directories and files
 .vscode/*
