@@ -70,6 +70,7 @@ export function loadImageFromDataURL(dataURL) {
         displayImageData,
         displayDims: { w: dw, h: dh },
         displayScale: scale,
+        imageDataURL: dataURL,
       });
     };
     img.src = dataURL;
