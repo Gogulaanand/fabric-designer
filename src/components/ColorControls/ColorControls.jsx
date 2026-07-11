@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { Pipette } from 'lucide-react';
 import { hexToRgb, rgbToHex, hslToRgb, rgbToHsl, makeColor } from '../../utils/colorUtils.js';
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
@@ -119,16 +120,16 @@ export function ColorControls({ activeColor, swatches, onColorChange, onAddSwatc
           {typeof EyeDropper !== 'undefined' && (
             <button
               onClick={onEyedropper}
-              className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border border-slate-200 text-base text-slate-500 hover:text-slate-800 hover:border-slate-400 transition-colors w-full bg-white"
+              className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-500 hover:text-slate-800 hover:border-slate-400 transition-colors w-full bg-white"
             >
-              💧 Eyedropper
+              <Pipette size={14} /> Eyedropper
             </button>
           )}
 
           {/* Add to swatches */}
           <button
             onClick={() => onAddSwatch(activeColor)}
-            className="text-base text-slate-400 hover:text-blue-600 transition-colors text-left"
+            className="text-sm text-slate-400 hover:text-blue-600 transition-colors text-left"
           >
             + Save as swatch
           </button>
@@ -159,7 +160,7 @@ export function ColorControls({ activeColor, swatches, onColorChange, onAddSwatc
           <button
             onClick={applyGradient}
             disabled={!selectedBand || !gradTopValid || !gradBotValid}
-            className="px-3 py-2 rounded-lg text-base font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Apply Gradient to Band
           </button>
@@ -202,7 +203,7 @@ function ModeBtn({ children, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="flex-1 px-2 py-1.5 text-base rounded-md font-medium transition-all"
+      className="flex-1 px-2 py-1.5 text-sm rounded-md font-medium transition-all"
       style={{
         background: active ? '#fff' : 'transparent',
         color: active ? '#1d4ed8' : '#64748b',

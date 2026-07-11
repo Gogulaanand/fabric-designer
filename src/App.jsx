@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { ImageUp, Loader2 } from 'lucide-react';
 import { useBandEngine } from './hooks/useBandEngine.js';
 import { useColorizer } from './hooks/useColorizer.js';
 import { useImageLoader } from './hooks/useImageLoader.js';
@@ -417,9 +418,10 @@ export default function App() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-lg border border-slate-200 bg-white text-base text-slate-700 font-medium hover:border-blue-400 hover:text-blue-700 transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
+            className="flex items-center gap-2 px-4 py-1.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 font-medium hover:border-blue-400 hover:text-blue-700 transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
           >
-            {loading ? '⏳ Loading…' : '📂 Upload Image'}
+            {loading ? <Loader2 size={15} className="animate-spin" /> : <ImageUp size={15} />}
+            {loading ? 'Loading…' : 'Upload Image'}
           </button>
           <input
             ref={fileInputRef}
@@ -492,7 +494,7 @@ export default function App() {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className="flex-1 py-2.5 text-base font-medium transition-colors"
+                className="flex-1 py-2.5 text-sm font-medium transition-colors"
                 style={{
                   color: activeTab === tab ? '#1d4ed8' : '#94a3b8',
                   borderBottom: activeTab === tab ? '2px solid #3b82f6' : '2px solid transparent',

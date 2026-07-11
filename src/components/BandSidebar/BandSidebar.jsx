@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Copy, ClipboardPaste, X, Lock, LockOpen } from 'lucide-react';
 
 export function BandSidebar({
   bands, dividers, selectedBandId, dividerAxis,
@@ -104,15 +105,15 @@ function BandRow({ band, range, index, selected, hovered, onSelect, onRename, on
 
         {/* Actions */}
         <div className="flex items-center gap-0.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
-          <IconBtn title="Copy color" onClick={onCopy} disabled={!band.color && !band.gradient}>⎘</IconBtn>
-          <IconBtn title="Paste color" onClick={onPaste} disabled={!canPaste}>⎗</IconBtn>
-          <IconBtn title="Clear color" onClick={onClear} disabled={!band.color && !band.gradient}>✕</IconBtn>
+          <IconBtn title="Copy color" onClick={onCopy} disabled={!band.color && !band.gradient}><Copy size={13} /></IconBtn>
+          <IconBtn title="Paste color" onClick={onPaste} disabled={!canPaste}><ClipboardPaste size={13} /></IconBtn>
+          <IconBtn title="Clear color" onClick={onClear} disabled={!band.color && !band.gradient}><X size={13} /></IconBtn>
           <IconBtn
             title={band.locked ? 'Unlock band' : 'Lock band'}
             onClick={onToggleLock}
             active={band.locked}
           >
-            {band.locked ? '🔒' : '🔓'}
+            {band.locked ? <Lock size={13} /> : <LockOpen size={13} />}
           </IconBtn>
         </div>
       </div>

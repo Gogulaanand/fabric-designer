@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Download, Copy, Check } from 'lucide-react';
 
 export function ExportDialog({ onExportPng, onExportJpg, onCopyToClipboard, hasImage }) {
   const [jpgQuality, setJpgQuality] = useState(0.92);
@@ -19,9 +20,9 @@ export function ExportDialog({ onExportPng, onExportJpg, onCopyToClipboard, hasI
       <button
         onClick={onExportPng}
         disabled={!hasImage}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-base text-slate-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed w-full bg-white shadow-sm"
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed w-full bg-white shadow-sm"
       >
-        <span className="text-slate-400">↓</span>
+        <Download size={14} className="text-slate-400" />
         <span className="font-medium">Download PNG</span>
         <span className="ml-auto text-sm text-slate-400">Full res</span>
       </button>
@@ -39,9 +40,9 @@ export function ExportDialog({ onExportPng, onExportJpg, onCopyToClipboard, hasI
         <button
           onClick={() => onExportJpg(jpgQuality)}
           disabled={!hasImage}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-base text-slate-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed w-full bg-white shadow-sm"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-blue-300 hover:text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed w-full bg-white shadow-sm"
         >
-          <span className="text-slate-400">↓</span>
+          <Download size={14} className="text-slate-400" />
           <span className="font-medium">Download JPG</span>
         </button>
       </div>
@@ -49,14 +50,14 @@ export function ExportDialog({ onExportPng, onExportJpg, onCopyToClipboard, hasI
       <button
         onClick={handleCopy}
         disabled={!hasImage || copying}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg border text-base transition-colors disabled:opacity-40 disabled:cursor-not-allowed w-full shadow-sm"
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed w-full shadow-sm"
         style={{
           color: copied ? '#16a34a' : '#374151',
           borderColor: copied ? '#86efac' : '#e2e8f0',
           background: copied ? '#f0fdf4' : '#fff',
         }}
       >
-        <span>{copied ? '✓' : '⎘'}</span>
+        {copied ? <Check size={14} /> : <Copy size={14} className="text-slate-400" />}
         <span className="font-medium">{copied ? 'Copied!' : copying ? 'Copying…' : 'Copy to Clipboard'}</span>
       </button>
     </div>

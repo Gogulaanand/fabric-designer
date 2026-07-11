@@ -1,9 +1,14 @@
+import {
+  Plus, Paintbrush, Move, Scissors,
+  Undo2, Redo2, Eye, EyeOff, Sparkles, RotateCcw, Repeat,
+  Download, FolderOpen, Save, Rows3, Columns3,
+} from 'lucide-react';
 
 const TOOLS = [
-  { id: 'addDiv', label: 'Add Line',    icon: '╋', color: '#2563eb', hint: 'Click image to add a divider line' },
-  { id: 'paint',  label: 'Paint',       icon: '🎨', color: '#7c3aed', hint: 'Click a band to fill with active color' },
-  { id: 'dragDiv',label: 'Drag Line',   icon: '⇔',  color: '#d97706', hint: 'Drag a divider line to reposition it' },
-  { id: 'rmDiv',  label: 'Remove Line', icon: '✂',  color: '#dc2626', hint: 'Click near a divider line to remove it' },
+  { id: 'addDiv', label: 'Add Line',    Icon: Plus,       hint: 'Click image to add a divider line' },
+  { id: 'paint',  label: 'Paint',       Icon: Paintbrush, hint: 'Click a band to fill with active color' },
+  { id: 'dragDiv',label: 'Drag Line',   Icon: Move,       hint: 'Drag a divider line to reposition it' },
+  { id: 'rmDiv',  label: 'Remove Line', Icon: Scissors,   hint: 'Click near a divider line to remove it' },
 ];
 
 function getRepeatHint(tool, repeatFirstSelected) {
@@ -32,7 +37,7 @@ export function Toolbar({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-2">
         {/* Direction toggle */}
         <div className="flex items-center rounded-lg border border-slate-200 overflow-hidden mr-1">
           <AxisBtn
@@ -41,7 +46,8 @@ export function Toolbar({
             onClick={() => onSetDividerAxis('horizontal')}
             title="Horizontal bands (rows)"
           >
-            ═ Horizontal
+            <Rows3 size={14} />
+            Horizontal
           </AxisBtn>
           <div className="w-px h-6 bg-slate-200" />
           <AxisBtn
@@ -50,23 +56,24 @@ export function Toolbar({
             onClick={() => onSetDividerAxis('vertical')}
             title="Vertical bands (columns)"
           >
-            ║ Vertical
+            <Columns3 size={14} />
+            Vertical
           </AxisBtn>
         </div>
 
-        <div className="w-px h-6 bg-slate-200 mx-0.5" />
+        <Sep />
 
         {/* Undo / Redo */}
-        <ToolBtn disabled={!canUndo} color="#64748b" onClick={onUndo} title="Undo (Ctrl+Z)">
-          <span>↶</span>
+        <ToolBtn disabled={!canUndo} onClick={onUndo} title="Undo (Ctrl+Z)">
+          <Undo2 size={15} />
           <span>Undo</span>
         </ToolBtn>
-        <ToolBtn disabled={!canRedo} color="#64748b" onClick={onRedo} title="Redo (Ctrl+Shift+Z)">
-          <span>↷</span>
+        <ToolBtn disabled={!canRedo} onClick={onRedo} title="Redo (Ctrl+Shift+Z)">
+          <Redo2 size={15} />
           <span>Redo</span>
         </ToolBtn>
 
-        <div className="w-px h-6 bg-slate-200 mx-0.5" />
+        <Sep />
 
         {/* Tool buttons */}
         {TOOLS.map(t => (
@@ -74,61 +81,60 @@ export function Toolbar({
             key={t.id}
             active={tool === t.id}
             disabled={!hasImage}
-            color={t.color}
             onClick={() => setTool(t.id)}
           >
-            <span>{t.icon}</span>
+            <t.Icon size={15} />
             <span>{t.label}</span>
           </ToolBtn>
         ))}
 
-        <div className="w-px h-6 bg-slate-200 mx-0.5" />
+        <Sep />
 
-        <ToolBtn disabled={!hasImage} color={showOriginal ? '#0ea5e9' : '#64748b'} onClick={onToggleOriginal} active={showOriginal}>
-          <span>👁</span>
+        <ToolBtn disabled={!hasImage} onClick={onToggleOriginal} active={showOriginal}>
+          {showOriginal ? <EyeOff size={15} /> : <Eye size={15} />}
           <span>{showOriginal ? 'Colorized' : 'Original'}</span>
         </ToolBtn>
 
-        <ToolBtn disabled={!hasImage} color="#64748b" onClick={onAutoDetect}>
-          <span>✨</span>
+        <ToolBtn disabled={!hasImage} onClick={onAutoDetect}>
+          <Sparkles size={15} />
           <span>Auto Detect</span>
         </ToolBtn>
 
-        <ToolBtn disabled={!hasImage} color="#64748b" onClick={onReset}>
-          <span>↺</span>
+        <ToolBtn disabled={!hasImage} onClick={onReset}>
+          <RotateCcw size={15} />
           <span>Reset</span>
         </ToolBtn>
 
-        <div className="w-px h-6 bg-slate-200 mx-0.5" />
+        <Sep />
 
         {/* Repeat Pattern — two-click select then stamp */}
         <ToolBtn
           disabled={!hasImage || (!canRepeat && !isRepeatMode)}
-          color="#059669"
           onClick={onRepeatPattern}
           active={isRepeatMode}
           title={isRepeatMode ? 'Click again or press Esc to cancel' : 'Select a band range, then stamp copies at any position'}
         >
-          <span>🔁</span>
+          <Repeat size={15} />
           <span>{repeatLabel}</span>
         </ToolBtn>
 
-        <div className="w-px h-6 bg-slate-200 mx-0.5" />
+        {/* File operations — pushed to the right edge */}
+        <div className="flex items-center gap-1 ml-auto pl-2">
+          <ToolBtn disabled={!hasImage} onClick={onDownloadPng} title="Download the colored image as PNG (more formats in the Export tab)">
+            <Download size={15} />
+            <span>Download Image</span>
+          </ToolBtn>
 
-        <ToolBtn disabled={!hasImage} color="#2563eb" onClick={onDownloadPng} title="Download the colored image as PNG (more formats in the Export tab)">
-          <span>⬇</span>
-          <span>Download PNG</span>
-        </ToolBtn>
+          <ToolBtn onClick={onLoadProject}>
+            <FolderOpen size={15} />
+            <span>Load</span>
+          </ToolBtn>
 
-        <ToolBtn color="#64748b" onClick={onLoadProject}>
-          <span>📂</span>
-          <span>Load</span>
-        </ToolBtn>
-
-        <ToolBtn disabled={!hasImage} color="#64748b" onClick={onSaveProject} title="Save project as JSON (includes image)">
-          <span>💾</span>
-          <span>Save</span>
-        </ToolBtn>
+          <ToolBtn disabled={!hasImage} onClick={onSaveProject} title="Save project as JSON (includes image)">
+            <Save size={15} />
+            <span>Save</span>
+          </ToolBtn>
+        </div>
       </div>
 
       {/* Paint mode toggle */}
@@ -139,7 +145,7 @@ export function Toolbar({
               type="checkbox"
               checked={replaceAllNonBlack}
               onChange={(e) => onToggleReplaceAllNonBlack(e.target.checked)}
-              className="rounded accent-violet-600"
+              className="w-3.5 h-3.5 rounded accent-blue-600"
             />
             Replace all non-black colors
           </label>
@@ -150,20 +156,22 @@ export function Toolbar({
   );
 }
 
-function ToolBtn({ children, active, disabled, color, onClick, title }) {
+function Sep() {
+  return <div className="w-px h-6 bg-slate-200 mx-1" />;
+}
+
+function ToolBtn({ children, active, disabled, onClick, title }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       title={title}
       style={{
-        background: active ? color : 'transparent',
+        background: active ? '#2563eb' : 'transparent',
         color: disabled ? '#cbd5e1' : active ? '#fff' : '#475569',
-        outline: active ? `2px solid ${color}` : '2px solid transparent',
-        outlineOffset: '1px',
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}
-      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-base font-medium transition-all duration-100 hover:bg-slate-100 disabled:opacity-50"
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-100 hover:bg-slate-100 disabled:opacity-50"
     >
       {children}
     </button>
@@ -182,7 +190,7 @@ function AxisBtn({ children, active, disabled, onClick, title }) {
         fontWeight: active ? 600 : 400,
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}
-      className="px-3 py-1.5 text-base transition-colors disabled:opacity-40"
+      className="flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors disabled:opacity-40"
     >
       {children}
     </button>

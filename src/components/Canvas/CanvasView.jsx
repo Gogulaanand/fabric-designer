@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
+import { Plus, Minus, Maximize } from 'lucide-react';
 import { useZoomPan } from '../../hooks/useZoomPan.js';
 
 const DIVIDER_SNAP_PX = 12;
@@ -376,17 +377,22 @@ export function CanvasView({
 
   return (
     <div
-      className="relative flex-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 select-none min-h-0"
+      className="relative flex-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-200 select-none min-h-0"
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
-      style={{ outline: 'none' }}
+      style={{
+        outline: 'none',
+        backgroundImage: 'radial-gradient(circle, rgba(100,116,139,0.22) 1px, transparent 1px)',
+        backgroundSize: '18px 18px',
+        boxShadow: 'inset 0 1px 4px rgba(15,23,42,0.06)',
+      }}
     >
       {/* Zoom controls */}
       <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
-        <ViewBtn onClick={() => { const r = containerRef.current?.getBoundingClientRect(); if (r) zoom(100, r.left + r.width/2, r.top + r.height/2, r); }} title="Zoom in (Ctrl+=)">+</ViewBtn>
-        <ViewBtn onClick={() => { const r = containerRef.current?.getBoundingClientRect(); if (r) zoom(-100, r.left + r.width/2, r.top + r.height/2, r); }} title="Zoom out (Ctrl+-)">−</ViewBtn>
-        <ViewBtn onClick={handleFitView} title="Fit to window">⊡</ViewBtn>
+        <ViewBtn onClick={() => { const r = containerRef.current?.getBoundingClientRect(); if (r) zoom(100, r.left + r.width/2, r.top + r.height/2, r); }} title="Zoom in (Ctrl+=)"><Plus size={14} /></ViewBtn>
+        <ViewBtn onClick={() => { const r = containerRef.current?.getBoundingClientRect(); if (r) zoom(-100, r.left + r.width/2, r.top + r.height/2, r); }} title="Zoom out (Ctrl+-)"><Minus size={14} /></ViewBtn>
+        <ViewBtn onClick={handleFitView} title="Fit to window"><Maximize size={14} /></ViewBtn>
         <ViewBtn onClick={resetView} title="Reset to 100%">1:1</ViewBtn>
         <span className="text-sm text-slate-400 px-1 font-mono">{Math.round(scale * 100)}%</span>
       </div>
@@ -542,7 +548,7 @@ function ViewBtn({ children, onClick, title }) {
     <button
       onClick={onClick}
       title={title}
-      className="min-w-7 h-7 px-1 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-slate-800 hover:border-slate-400 text-base font-bold transition-colors shadow-sm"
+      className="min-w-7 h-7 px-1 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-slate-800 hover:border-slate-400 text-xs font-bold transition-colors shadow-sm flex items-center justify-center"
     >
       {children}
     </button>
