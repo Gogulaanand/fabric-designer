@@ -123,6 +123,12 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
+  const showToast = useCallback((msg, type = 'info') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ msg, type });
+    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+  }, []);
+
   // --- Restore / decline handlers ---
   const handleRestoreSession = useCallback(async () => {
     if (!restoreBanner) return;
@@ -152,12 +158,6 @@ export default function App() {
     setRestoreBanner(null);
     clearSession().catch(() => {});
     initializedRef.current = true;
-  }, []);
-
-  const showToast = useCallback((msg, type = 'info') => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast({ msg, type });
-    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
   }, []);
 
   const { handleInputChange, handleDrop, handleDragOver, loading, fileInputRef } = useImageLoader(
