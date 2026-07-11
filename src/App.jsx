@@ -38,16 +38,18 @@ export default function App() {
       const tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      // With Shift held, e.key reports uppercase ('Z'), so compare case-insensitively
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && key === 'z' && !e.shiftKey) {
         e.preventDefault();
         engine.undo();
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+      if ((e.ctrlKey || e.metaKey) && key === 'z' && e.shiftKey) {
         e.preventDefault();
         engine.redo();
       }
       // Also support Ctrl+Y for redo (Windows convention)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      if ((e.ctrlKey || e.metaKey) && key === 'y') {
         e.preventDefault();
         engine.redo();
       }
